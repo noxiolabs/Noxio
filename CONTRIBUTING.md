@@ -27,7 +27,7 @@ now are:
 - npm 10+
 - Git
 - Windows 11 (for v0.1 development)
-- NVIDIA GPU with 8GB+ VRAM recommended
+- NVIDIA GPU with 8GB+ VRAM (8GB runs 3B–7B models; 10GB+ recommended for 14B models)
 - [Ollama](https://ollama.ai) installed natively on Windows
 
 ### Getting Started
@@ -171,8 +171,7 @@ All service management (starting Ollama, switching modes, health checks) lives
 in the main process. The React UI only makes IPC calls via `window.electronAPI`.
 Never put Node.js code in the renderer.
 
-The full architecture is documented in the [product doc](docs/product-doc.md)
-(added soon).
+The full architecture is documented in [CLAUDE.md](CLAUDE.md) in the repo root.
 
 ---
 

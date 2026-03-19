@@ -20,7 +20,8 @@ Noxio is a local-first AI desktop app built with:
 - Kokoro FastAPI for TTS
 
 Repo: github.com/noxiolabs/Noxio
-Architecture doc: See product document v1.6
+Architecture doc: CLAUDE.md in the repo root (source of truth for all sessions).
+Extended product context: noxio-product-doc.docx (external, owner has access — ask if needed).
 
 ## BRANCH STRATEGY
 - main → stable, tagged releases only
@@ -41,39 +42,46 @@ Examples:
 - refactor(orchestrator): split into smaller modules
 
 ## DEVELOPMENT PRIORITIES (in order)
-Phase 1 — Foundation (Weeks 1-4):
+Phase 1 — Electron Shell + IPC Bridge (Weeks 1-2):
 1. Electron shell — BrowserWindow, preload.js, basic IPC
 2. Redux store structure — all slices defined even if empty
-3. Hardware detector — GPU, VRAM, RAM, OS detection
-4. Ollama process manager — start, stop, health check
+3. npm run dev with hot reload working
 
-Phase 2 — Setup Wizard (Weeks 5-6):
-5. 6-screen wizard UI
-6. Model recommender algorithm
-7. Model downloader with progress events
+Phase 2 — Infrastructure (Weeks 3-4):
+4. Hardware detector — GPU, VRAM, RAM, OS detection
+5. Ollama process manager — start, stop, health check
+6. LiteLLM process manager — config generation, startup, cloud routing
 
-Phase 3 — Chat (Weeks 7-8) — v0.1 MILESTONE:
-8. Chat panel with streaming
-9. Model selector
-10. Conversation history
-11. StatusBar
+Phase 3 — Setup Wizard (Weeks 5-6):
+7. 6-screen wizard UI
+8. Model recommender algorithm
+9. Model downloader with progress events
 
-Phase 4 — Create (Weeks 9-10):
-12. ComfyUI process manager
-13. Image generation API wrapper
-14. Create panel UI
-15. VRAM auto-management
+Phase 4 — Chat Panel (Weeks 7-8) — v0.1-alpha MILESTONE:
+10. Chat panel with streaming
+11. Model selector
+12. Conversation history
+13. StatusBar
+14. Basic cloud hybrid: API keys + budget cap in settings
 
-Phase 5 — Voice (Weeks 11-12):
-16. Whisper process manager
-17. Kokoro process manager
-18. Voice panel UI
+Phase 5 — Create Panel (Weeks 9-10):
+15. ComfyUI process manager
+16. Image generation API wrapper
+17. Create panel UI
+18. VRAM auto-management
 
-Phase 6 — Agent + Polish (Weeks 13-16):
-19. Agent panel (framework TBD)
-20. Gaming mode
-21. System tray
-22. Windows .exe installer
+Phase 6 — Voice Panel (Weeks 11-12):
+19. Whisper process manager
+20. Kokoro process manager
+21. Voice panel UI
+
+Phase 7 — Agent Panel (Weeks 13-14):
+22. Agent panel (framework TBD)
+
+Phase 8 — Polish + Launch (Weeks 15-16) — v0.1 FULL RELEASE:
+23. Gaming mode
+24. System tray
+25. Windows .exe installer
 
 ## CODE QUALITY RULES
 - No console.log in production code — use a proper logger

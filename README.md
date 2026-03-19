@@ -64,11 +64,12 @@ The router handles all of this invisibly. You just chat — Noxio picks the righ
 
 | Component | Minimum | Recommended |
 |---|---|---|
-| GPU | NVIDIA RTX 3080 (10GB) | NVIDIA RTX 3090 / 4080 / 5080 (16GB+) |
+| GPU | NVIDIA RTX 3070 Ti / 3080 (8GB+)* | NVIDIA RTX 3090 / 4080 / 5080 (16GB+) |
 | RAM | 16GB | 32GB |
 | Storage | 50GB free | 100GB+ free |
 | OS | Windows 11 | Windows 11 |
 
+> *8GB VRAM supports smaller models (3B–7B). 10GB+ recommended for the full 14B model experience. Under 8GB, cloud API fallback mode is recommended.
 > Mac (Apple Silicon) and Linux support planned for v0.2 and v0.3.
 > AMD GPU support coming in v0.3.
 
@@ -101,7 +102,8 @@ Noxio is in active early development. The architecture is fully designed and a p
 | Gaming mode + system tray | ⏳ Planned | Week 15-16 |
 | Windows installer (.exe) | ⏳ Planned | Week 15-16 |
 
-> At end of Week 8, a working v0.1 will be available for early testing — chat with a local LLM through a clean desktop UI, no terminal needed.
+> **v0.1-alpha (Week 8):** Chat panel working — stream conversations with a local LLM through a clean desktop UI. No terminal needed. Early testers welcome.
+> **v0.1 full release (Week 16):** All features complete — chat, create, voice, agent, gaming mode, cloud hybrid.
 
 ---
 
@@ -152,14 +154,18 @@ Shortcuts available from Chat: `/image [prompt]`, `/video [prompt]`
 
 ## Roadmap
 
-### v0.1 — NVIDIA Windows
+### v0.1-alpha — Chat (Week 8 target)
 - [ ] Electron app + setup wizard
 - [ ] Chat panel with streaming and model routing
+- [ ] Basic cloud hybrid: API key input, per-provider budget cap, LiteLLM routing
+- [ ] Windows installer (.exe)
+- [ ] Early tester release
+
+### v0.1 — Full Release (Week 16 target)
 - [ ] Create panel (FLUX.1 image generation, simple UI)
 - [ ] Voice panel (Whisper STT + Kokoro TTS)
 - [ ] Agent panel (basic, sandboxed workspace)
 - [ ] Gaming mode (one-click GPU free)
-- [ ] Windows installer (.exe)
 - [ ] Public launch
 
 ### v0.2 — Mac + Smart Router + Mobile
@@ -168,10 +174,10 @@ Shortcuts available from Chat: `/image [prompt]`, `/video [prompt]`
 - [ ] Mobile companion app (iOS + Android)
 - [ ] Pro tier launch
 
-### v0.3 — Linux + AMD + Cloud Hybrid
+### v0.3 — Linux + AMD + Cloud Dashboard
 - [ ] Linux support
 - [ ] AMD GPU support (ROCm)
-- [ ] Full cloud API management with per-provider budget controls
+- [ ] Full cloud management dashboard: usage graphs, spend history, per-provider analytics
 - [ ] Enterprise license
 
 ### v0.4 — Ecosystem

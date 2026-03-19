@@ -112,6 +112,7 @@ settings: {
 | License | AGPL-3.0 |
 | Website | noxiolabs.dev |
 | Status | Active development — nothing in repo yet as of March 2026 |
+| Product doc | noxio-product-doc.docx (external, v1.6) — owner has access. Contains full vision, architecture decisions, competitive landscape, learnings log. Ask owner to share the relevant section if you need something not covered in CLAUDE.md. **CLAUDE.md is the source of truth for Claude sessions** — do not require the product doc to work. |
 
 ---
 

@@ -11,9 +11,11 @@ and is always useful to the person reading it.
 ## DOCUMENTS YOU OWN
 
 ### 1. Product Document (noxio-product-doc.docx)
-The living internal reference document. Contains:
-- Vision, architecture, decisions, learnings, roadmap, competitive landscape
+The living internal reference document (external, owner has access). Contains:
+- Vision, architecture decisions, learnings log, competitive landscape
 Current version: 1.6
+Note: CLAUDE.md in the repo root is the session-accessible source of truth.
+The product doc is supplementary — keep CLAUDE.md up to date so sessions never depend on the Word doc.
 
 Update when:
 - A product decision is made (add to Section 9)
