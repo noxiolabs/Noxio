@@ -1,0 +1,15 @@
+# Modelfile for qwen2.5-coder:14b — coding tasks, optimised for 16GB VRAM
+# Context 4096 to prevent OOM on 16GB. Increase to 8192 if using 24GB+ VRAM.
+
+FROM qwen2.5-coder:14b
+
+PARAMETER num_ctx 4096
+PARAMETER num_gpu 999
+PARAMETER num_thread 8
+PARAMETER temperature 0.2
+PARAMETER top_p 0.95
+
+SYSTEM """
+You are an expert software engineer. Write clean, correct, and well-commented code.
+Prefer concise explanations. You run entirely on the user's local hardware.
+"""

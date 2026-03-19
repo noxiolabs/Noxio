@@ -1,0 +1,16 @@
+# Modelfile for qwen2.5:14b — general chat, optimised for 16GB VRAM
+# Context set to 4096 to prevent OOM. Default 32768 requires ~48GB total.
+# See CLAUDE.md for explanation.
+
+FROM qwen2.5:14b
+
+PARAMETER num_ctx 4096
+PARAMETER num_gpu 999
+PARAMETER num_thread 8
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+
+SYSTEM """
+You are a helpful, honest, and concise assistant. You run entirely on the user's
+local hardware — no internet connection is used unless explicitly requested.
+"""
