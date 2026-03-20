@@ -1,90 +1,377 @@
 /**
  * @file process-manager.js
- * @description Spawns, monitors, and restarts background service processes
- * (Ollama, LiteLLM, ComfyUI, Whisper, Kokoro). Tracks PIDs, handles unexpected
- * crashes with exponential backoff restarts, and emits status events to the
- * renderer via the mainWindow reference.
+ * @description Spawns, monitors, restarts, and gracefully shuts down all 5 background
+ * services (Ollama, LiteLLM, ComfyUI, Whisper, Kokoro). Tracks PIDs, handles unexpected
+ * crashes with exponential backoff restarts, and emits service-status events to the
+ * renderer via the BrowserWindow reference.
  *
- * All service spawning in Noxio goes through this module — never spawn processes
- * directly from IPC handlers or service modules.
+ * All service spawning in Noxio must go through this module — never spawn services
+ * directly from IPC handlers or service wrapper modules.
  *
- * TODO Phase 2: implement spawn/monitor/restart logic.
+ * Shutdown order: kokoro → whisper → comfyui → litellm → ollama (sequential).
  */
 
 'use strict';
 
+const { spawn, execFile } = require('child_process');
+const os = require('os');
+const path = require('path');
 const logger = require('../utils/logger');
 
-/**
- * @typedef {'stopped'|'starting'|'running'|'error'} ServiceStatus
- *
- * @typedef {Object} ManagedService
- * @property {string}        name    - Service identifier
- * @property {number|null}   pid     - OS process ID, null if not running
- * @property {ServiceStatus} status
- * @property {number}        restarts - Consecutive restart count (reset on clean uptime)
- */
-
-/** @type {Map<string, ManagedService>} */
-const services = new Map();
-
 /** @type {import('electron').BrowserWindow|null} */
-let _mainWindow = null;
+let _win = null;
 
 /**
- * Initialises the process manager with a reference to the main window so it
- * can push service-status events to the renderer.
- * @param {import('electron').BrowserWindow} mainWindow
+ * Registry of service configurations. Executable paths and some args are resolved
+ * at init/startService time — null entries are filled in dynamically.
+ * @type {Object.<string, {executable: string|null, args: string[], cwd: string|null, env: Object, maxRestarts: number, restartDelayBaseMs: number}>}
  */
-function init(mainWindow) {
-  _mainWindow = mainWindow;
+const SERVICE_CONFIG = {
+  ollama: {
+    executable: null,
+    args: ['serve'],
+    cwd: null,
+    env: {
+      OLLAMA_HOST: '0.0.0.0',
+      OLLAMA_KEEP_ALIVE: '-1',
+      OLLAMA_NUM_GPU: '999',
+      OLLAMA_FLASH_ATTENTION: '1',
+    },
+    maxRestarts: 5,
+    restartDelayBaseMs: 1000,
+  },
+  litellm: {
+    executable: null,
+    args: ['-m', 'litellm', '--config', null, '--port', '4000'],
+    cwd: null,
+    env: {},
+    maxRestarts: 5,
+    restartDelayBaseMs: 1000,
+  },
+  comfyui: {
+    executable: null,
+    args: ['main.py', '--listen', '0.0.0.0', '--port', '8188'],
+    cwd: null,
+    env: {},
+    maxRestarts: 5,
+    restartDelayBaseMs: 1000,
+  },
+  whisper: {
+    executable: null,
+    args: ['server.py', '--port', '10300'],
+    cwd: null,
+    env: {},
+    maxRestarts: 5,
+    restartDelayBaseMs: 1000,
+  },
+  kokoro: {
+    executable: null,
+    args: ['app.py', '--port', '8880'],
+    cwd: null,
+    env: {},
+    maxRestarts: 5,
+    restartDelayBaseMs: 1000,
+  },
+};
+
+/**
+ * Runtime state per service.
+ * @type {Object.<string, {status: string, pid: number|null, restartCount: number, lastExitCode: number|null, startedAt: string|null}>}
+ */
+const serviceStates = {
+  ollama:  { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
+  litellm: { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
+  comfyui: { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
+  whisper: { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
+  kokoro:  { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
+};
+
+/** Live child process references keyed by service name */
+const _children = {};
+
+/** Intentional stop flags — prevents restart loop after an explicit stopService() */
+const _intentionalStop = {};
+
+/**
+ * Emits a service-status event to the renderer. Safe to call before window is shown.
+ * @param {string} name - Service name
+ * @param {string} status
+ * @param {number|null} pid
+ */
+function emitStatus(name, status, pid = null) {
+  serviceStates[name].status = status;
+  serviceStates[name].pid = pid;
+  if (_win && !_win.isDestroyed()) {
+    _win.webContents.send('service-status', { service: name, status, pid });
+  }
+  logger.info(`process-manager: [${name}] status → ${status}${pid ? ` (pid ${pid})` : ''}`);
+}
+
+/**
+ * Attempts to resolve the Ollama executable path.
+ * Tries the standard AppData install location, then Program Files, then PATH.
+ * @returns {Promise<string>} Resolved path
+ */
+async function resolveOllamaPath() {
+  const candidates = [
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Ollama', 'ollama.exe'),
+    path.join('C:', 'Program Files', 'Ollama', 'ollama.exe'),
+    'ollama',
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await new Promise((resolve, reject) => {
+        execFile(
+          candidate,
+          ['--version'],
+          { windowsHide: true, timeout: 5000 },
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+      logger.info(`process-manager: resolved Ollama at "${candidate}"`);
+      return candidate;
+    } catch (_) {
+      // Try next candidate
+    }
+  }
+  throw new Error('Ollama executable not found on any candidate path');
+}
+
+/**
+ * Resolves the Python executable name (python or python3) on PATH.
+ * @returns {Promise<string>} 'python' or 'python3'
+ */
+async function resolvePythonPath() {
+  for (const candidate of ['python', 'python3']) {
+    try {
+      await new Promise((resolve, reject) => {
+        execFile(
+          candidate,
+          ['--version'],
+          { windowsHide: true, timeout: 5000 },
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+      logger.info(`process-manager: resolved Python as "${candidate}"`);
+      return candidate;
+    } catch (_) {
+      // Try next
+    }
+  }
+  throw new Error('Python not found on PATH (tried python and python3)');
+}
+
+/**
+ * Initialises the process manager with a BrowserWindow reference so it can push
+ * service-status events to the renderer. Must be called once after window creation.
+ * @param {import('electron').BrowserWindow} win
+ */
+function init(win) {
+  _win = win;
   logger.info('process-manager: initialised');
 }
 
 /**
- * Emits a service-status event to the renderer.
- * @param {string} service
- * @param {ServiceStatus} status
- * @param {number|null} pid
+ * Spawns a service process, attaches crash detection, and manages auto-restart
+ * with exponential backoff. Internal — called by startService and by the restart loop.
+ * @param {string} name - Service name key in SERVICE_CONFIG
  */
-function emitStatus(service, status, pid = null) {
-  if (_mainWindow) {
-    _mainWindow.webContents.send('service-status', { service, status, pid });
+function spawnService(name) {
+  const config = SERVICE_CONFIG[name];
+
+  if (!config.executable) {
+    logger.error(`process-manager: no executable resolved for "${name}" — cannot spawn`);
+    emitStatus(name, 'crashed');
+    return;
   }
+
+  // For litellm, replace the null config path placeholder before spawning
+  const args = config.args.map((a) => (a === null ? '' : a));
+
+  const child = spawn(config.executable, args, {
+    cwd: config.cwd || undefined,
+    env: { ...process.env, ...config.env },
+    windowsHide: true,
+    // shell: false — explicitly never use shell
+  });
+
+  _children[name] = child;
+  serviceStates[name].startedAt = new Date().toISOString();
+
+  emitStatus(name, 'running', child.pid);
+
+  child.stdout.on('data', (data) => {
+    logger.info(`[${name}] ${data.toString().trim()}`);
+  });
+
+  child.stderr.on('data', (data) => {
+    logger.info(`[${name}] stderr: ${data.toString().trim()}`);
+  });
+
+  child.on('error', (err) => {
+    if (err.code === 'ENOENT' || err.code === 'EACCES') {
+      logger.error(`process-manager: [${name}] spawn error (${err.code}): ${err.message}`);
+      emitStatus(name, 'crashed');
+    } else {
+      logger.error(`process-manager: [${name}] process error: ${err.message}`);
+      emitStatus(name, 'crashed');
+    }
+  });
+
+  child.on('close', (code) => {
+    serviceStates[name].lastExitCode = code;
+    _children[name] = null;
+
+    if (_intentionalStop[name]) {
+      _intentionalStop[name] = false;
+      emitStatus(name, 'stopped');
+      return;
+    }
+
+    if (code !== 0) {
+      const { restartCount, maxRestarts, restartDelayBaseMs } = {
+        restartCount: serviceStates[name].restartCount,
+        ...config,
+      };
+
+      if (restartCount >= config.maxRestarts) {
+        logger.error(
+          `process-manager: [${name}] crashed ${restartCount} times — max retries exceeded`
+        );
+        emitStatus(name, 'crashed');
+        if (_win && !_win.isDestroyed()) {
+          _win.webContents.send('service-status', {
+            service: name,
+            status: 'crashed',
+            pid: null,
+            maxRetriesExceeded: true,
+          });
+        }
+        return;
+      }
+
+      const delay = Math.min(config.restartDelayBaseMs * 2 ** restartCount, 30000);
+      serviceStates[name].restartCount += 1;
+      emitStatus(name, 'restarting');
+
+      logger.warn(
+        `process-manager: [${name}] exited with code ${code} — restarting in ${delay}ms ` +
+        `(attempt ${serviceStates[name].restartCount}/${config.maxRestarts})`
+      );
+
+      setTimeout(() => spawnService(name), delay);
+    } else {
+      // Clean exit
+      emitStatus(name, 'stopped');
+    }
+  });
 }
 
 /**
- * Starts a named service process.
- * TODO Phase 2: implement spawn with crash detection and restart backoff.
- * @param {string} serviceName
- * @param {string} executablePath
- * @param {string[]} args
+ * Starts a named background service. Resolves executable paths on first call.
+ * @param {string} name - 'ollama' | 'litellm' | 'comfyui' | 'whisper' | 'kokoro'
  * @returns {Promise<void>}
  */
-async function startService(serviceName, executablePath, args = []) {
-  logger.info(`process-manager: startService(${serviceName}) — stub`);
-  emitStatus(serviceName, 'starting', null);
-  // TODO Phase 2: spawn process, track PID, set up crash handler
+async function startService(name) {
+  if (!SERVICE_CONFIG[name]) {
+    throw new Error(`process-manager: unknown service "${name}"`);
+  }
+
+  if (serviceStates[name].status === 'running' || serviceStates[name].status === 'starting') {
+    logger.info(`process-manager: [${name}] already running or starting — skipping`);
+    return;
+  }
+
+  emitStatus(name, 'starting');
+  serviceStates[name].restartCount = 0;
+  _intentionalStop[name] = false;
+
+  // Resolve executable on first start
+  if (!SERVICE_CONFIG[name].executable) {
+    try {
+      if (name === 'ollama') {
+        SERVICE_CONFIG[name].executable = await resolveOllamaPath();
+      } else {
+        // All Python-based services
+        SERVICE_CONFIG[name].executable = await resolvePythonPath();
+      }
+    } catch (err) {
+      logger.error(`process-manager: [${name}] failed to resolve executable: ${err.message}`);
+      emitStatus(name, 'crashed');
+      return;
+    }
+  }
+
+  spawnService(name);
 }
 
 /**
- * Stops a named service process gracefully, then force-kills if it doesn't exit.
- * TODO Phase 2: implement graceful stop + force kill fallback.
- * @param {string} serviceName
+ * Stops a named service gracefully. Sends SIGTERM, waits up to 8 seconds,
+ * then force-kills if still running.
+ * @param {string} name - Service name
  * @returns {Promise<void>}
  */
-async function stopService(serviceName) {
-  logger.info(`process-manager: stopService(${serviceName}) — stub`);
-  emitStatus(serviceName, 'stopped', null);
-  // TODO Phase 2: send SIGTERM, wait, then SIGKILL
+async function stopService(name) {
+  const child = _children[name];
+  if (!child || serviceStates[name].status === 'stopped') {
+    logger.info(`process-manager: [${name}] not running — skipping stop`);
+    return;
+  }
+
+  _intentionalStop[name] = true;
+
+  return new Promise((resolve) => {
+    const forceKillTimer = setTimeout(() => {
+      logger.warn(`process-manager: [${name}] did not exit in 8s — force killing`);
+      try { child.kill(); } catch (_) { /* already dead */ }
+      resolve();
+    }, 8000);
+
+    child.once('close', () => {
+      clearTimeout(forceKillTimer);
+      resolve();
+    });
+
+    try {
+      child.kill('SIGTERM');
+    } catch (err) {
+      logger.warn(`process-manager: [${name}] kill(SIGTERM) failed: ${err.message}`);
+      clearTimeout(forceKillTimer);
+      resolve();
+    }
+  });
 }
 
 /**
- * Returns the current status of all tracked services.
- * @returns {Map<string, ManagedService>}
+ * Stops all services in the reverse startup order to avoid dependency issues.
+ * Sequential — awaits each before moving to the next.
+ * Order: kokoro → whisper → comfyui → litellm → ollama
+ * @returns {Promise<void>}
  */
-function getStatuses() {
-  return services;
+async function stopAll() {
+  logger.info('process-manager: stopping all services');
+  const order = ['kokoro', 'whisper', 'comfyui', 'litellm', 'ollama'];
+  for (const name of order) {
+    await stopService(name);
+  }
+  logger.info('process-manager: all services stopped');
 }
 
-module.exports = { init, startService, stopService, getStatuses };
+/**
+ * Returns a deep clone of the current service state map so callers cannot
+ * mutate internal state.
+ * @returns {Object.<string, {status: string, pid: number|null, restartCount: number, lastExitCode: number|null, startedAt: string|null}>}
+ */
+function getServiceStates() {
+  return JSON.parse(JSON.stringify(serviceStates));
+}
+
+module.exports = {
+  init,
+  startService,
+  stopService,
+  stopAll,
+  getServiceStates,
+  SERVICE_CONFIG,
+};

@@ -4,17 +4,18 @@
  * This is the single source of truth for every channel — every channel used in
  * preload.js must have a corresponding handler registered here.
  *
- * Phase 1: All handlers are stubs that return safe placeholder data.
- * Each stub is marked with a TODO pointing to the Phase where it gets wired up.
+ * Phase 2: hardware detection, service status, and chat streaming are wired to
+ * their real implementations. Remaining channels retain Phase 1 stubs with TODO
+ * markers for the phases that implement them.
  *
  * Channels (Renderer → Main, invoke):
- *   get-hardware-info         → Phase 2: detector.js
- *   get-service-statuses      → Phase 2: health-checker.js
+ *   get-hardware-info         → Phase 2: detector.js          ✓
+ *   get-service-statuses      → Phase 2: process-manager.js   ✓
  *   switch-mode               → Phase 5: orchestrator.js
  *   get-model-recommendations → Phase 3: model-recommender.js
  *   start-installation        → Phase 3: installer.js + model-downloader.js
- *   send-chat-message         → Phase 4: ollama.js via litellm.js
- *   stop-stream               → Phase 4: ollama.js
+ *   send-chat-message         → Phase 2: ollama.js            ✓
+ *   stop-stream               → Phase 2: ollama.js            ✓
  *   generate-image            → Phase 5: comfyui.js
  *   start-recording           → Phase 6: whisper.js
  *   stop-recording            → Phase 6: whisper.js
@@ -24,6 +25,9 @@
 
 const { ipcMain } = require('electron');
 const logger = require('../utils/logger');
+const { detectHardware } = require('../infrastructure/detector');
+const processManager = require('../infrastructure/process-manager');
+const ollama = require('../services/ollama');
 
 /**
  * Registers all IPC handlers. Must be called once after the BrowserWindow is created
@@ -35,34 +39,31 @@ function registerHandlers(mainWindow) {
   // ─── Hardware & Service Info ─────────────────────────────────────────────
 
   /**
-   * Returns detected hardware information.
-   * TODO Phase 2: wire to main/infrastructure/detector.js
+   * Returns detected hardware information (GPU, RAM, CPU, OS).
+   * Wired to detector.js — Phase 2.
    */
   ipcMain.handle('get-hardware-info', async () => {
-    logger.info('IPC: get-hardware-info (stub)');
-    return {
-      gpu: 'Detection pending',
-      vramTotalGB: 0,
-      vramFreeGB: 0,
-      ramGB: 0,
-      os: process.platform,
-      driver: 'Unknown',
-    };
+    try {
+      logger.info('IPC: get-hardware-info');
+      return await detectHardware();
+    } catch (err) {
+      logger.error(`IPC: get-hardware-info failed — ${err.message}`);
+      return { error: err.message };
+    }
   });
 
   /**
-   * Returns current status of all background services.
-   * TODO Phase 2: wire to main/infrastructure/health-checker.js
+   * Returns current process-level status of all background services.
+   * Wired to process-manager.js — Phase 2.
    */
-  ipcMain.handle('get-service-statuses', async () => {
-    logger.info('IPC: get-service-statuses (stub)');
-    return {
-      ollama: { status: 'stopped', pid: null },
-      litellm: { status: 'stopped', pid: null },
-      comfyui: { status: 'stopped', pid: null },
-      whisper: { status: 'stopped', pid: null },
-      kokoro: { status: 'stopped', pid: null },
-    };
+  ipcMain.handle('get-service-statuses', () => {
+    try {
+      logger.info('IPC: get-service-statuses');
+      return processManager.getServiceStates();
+    } catch (err) {
+      logger.error(`IPC: get-service-statuses failed — ${err.message}`);
+      return { error: err.message };
+    }
   });
 
   // ─── Mode Switching ──────────────────────────────────────────────────────
@@ -106,7 +107,6 @@ function registerHandlers(mainWindow) {
    */
   ipcMain.handle('start-installation', async (_event, config) => {
     logger.info('IPC: start-installation (stub)', config);
-    // Stub: emit a single progress event then complete
     mainWindow.webContents.send('install-progress', {
       step: 'stub',
       percent: 100,
@@ -117,29 +117,36 @@ function registerHandlers(mainWindow) {
   // ─── Chat ────────────────────────────────────────────────────────────────
 
   /**
-   * Sends a message to the LLM via LiteLLM → Ollama (or cloud fallback).
-   * Streams tokens back via 'stream-token' events. Signals completion via
-   * 'stream-complete'.
-   * TODO Phase 4: wire to main/services/litellm.js (which routes to ollama.js or cloud)
+   * Sends a message to the LLM via Ollama and streams tokens to the renderer.
+   * Phase 2: routes directly to Ollama, bypassing LiteLLM routing.
+   * Phase 4 will load conversation history from Redux and route via litellm.js.
+   * @param {{ message: string, model: string, conversationId: string }} payload
    */
   ipcMain.handle('send-chat-message', async (_event, { message, model, conversationId }) => {
-    logger.info(`IPC: send-chat-message (stub) — model: ${model}, conv: ${conversationId}`);
-    // Stub: echo the message back as a fake streamed response
-    const words = `[Stub] You said: "${message}". Wire up Phase 4 to get real responses.`.split(' ');
-    for (const word of words) {
-      mainWindow.webContents.send('stream-token', word + ' ');
-      await new Promise((r) => setTimeout(r, 40));
+    logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}`);
+    try {
+      // Phase 2: minimal single-turn messages array.
+      // Phase 4 will load the full conversation history from Redux state.
+      const messages = [{ role: 'user', content: message }];
+      await ollama.generateStream(model, messages, mainWindow);
+    } catch (err) {
+      logger.error(`IPC: send-chat-message error — ${err.message}`);
+      // Always send stream-complete so the renderer doesn't hang in streaming state
+      mainWindow.webContents.send('stream-complete');
     }
-    mainWindow.webContents.send('stream-complete');
   });
 
   /**
-   * Stops an active streaming response.
-   * TODO Phase 4: wire to main/services/ollama.js abort logic
+   * Aborts the currently active streaming response.
+   * Wired to ollama.stopGeneration() — Phase 2.
    */
-  ipcMain.handle('stop-stream', async () => {
-    logger.info('IPC: stop-stream (stub)');
-    mainWindow.webContents.send('stream-complete');
+  ipcMain.handle('stop-stream', () => {
+    logger.info('IPC: stop-stream');
+    try {
+      ollama.stopGeneration();
+    } catch (err) {
+      logger.error(`IPC: stop-stream error — ${err.message}`);
+    }
   });
 
   // ─── Image Generation ────────────────────────────────────────────────────
@@ -177,7 +184,7 @@ function registerHandlers(mainWindow) {
     return '[Voice transcription stub — wire up Phase 6]';
   });
 
-  logger.info('IPC handlers registered (Phase 1 stubs)');
+  logger.info('IPC handlers registered (Phase 2)');
 }
 
 module.exports = { registerHandlers };

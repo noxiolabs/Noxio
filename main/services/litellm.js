@@ -1,76 +1,90 @@
 /**
  * @file litellm.js
- * @description Manages the LiteLLM proxy process and handles all LLM routing
- * decisions. LiteLLM sits in front of Ollama and any configured cloud providers,
- * presenting a unified OpenAI-compatible API at http://localhost:4000.
+ * @description Phase 2 stub for LiteLLM process management. Writes a minimal local-only
+ * LiteLLM config.yaml and starts the process via process-manager.js. Full routing logic
+ * (privacy flag, budget enforcement, cloud fallback) is deferred to Phase 4.
  *
- * Routing logic (priority order):
- *   1. Privacy flag set → local only, no cloud
- *   2. Provider budget exhausted → local fallback
- *   3. Task complexity + cloud enabled + budget available → cloud
- *   4. Default → local (preferLocal = true)
+ * Phase 2 config routes all requests to Ollama's local qwen2.5:14b model only.
+ * The config file is written to Electron's userData directory so it persists across
+ * sessions and is OS-user-scoped.
  *
- * LiteLLM config is auto-generated from Redux settings on startup and
- * regenerated whenever cloud provider settings change.
- *
- * TODO Phase 2: implement config generation, process management, and routing.
+ * LiteLLM sits at http://127.0.0.1:4000 and presents an OpenAI-compatible API.
  */
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+const { app } = require('electron');
 const logger = require('../utils/logger');
+const processManager = require('../infrastructure/process-manager');
 
-const LITELLM_BASE_URL = 'http://localhost:4000';
+const LITELLM_BASE_URL = 'http://127.0.0.1:4000';
 
 /**
- * Generates a LiteLLM config.yaml from the current settings.
- * Includes local Ollama models and any enabled cloud providers with budget caps.
- * TODO Phase 2: implement config generation and write to disk.
+ * Generates the Phase 2 LiteLLM config YAML (local-only, single Ollama model).
+ * Writes the file to Electron's userData directory.
+ *
+ * @param {Object} _settings - Redux settings slice state (unused in Phase 2 stub)
+ * @returns {Promise<string>} Absolute path to the written config file
+ */
+async function generateConfig(_settings) {
+  const configPath = path.join(app.getPath('userData'), 'litellm-config.yaml');
+
+  const yaml = `model_list:
+  - model_name: "local/default"
+    litellm_params:
+      model: "ollama/qwen2.5:14b"
+      api_base: "http://127.0.0.1:11434"
+
+router_settings:
+  routing_strategy: "simple-shuffle"
+`;
+
+  await fs.promises.writeFile(configPath, yaml, 'utf8');
+  logger.info(`litellm: config written to "${configPath}"`);
+  return configPath;
+}
+
+/**
+ * Writes the LiteLLM config and starts the LiteLLM process via process-manager.
+ * Failures are logged as warnings but do not throw — LiteLLM is optional in Phase 2.
+ * Direct Ollama access via ollama.js is used for all chat in Phase 2.
  *
  * @param {Object} settings - Redux settings slice state
- * @returns {string} YAML config string
+ * @returns {Promise<void>}
  */
-function generateConfig(settings) {
-  logger.info('litellm: generateConfig() — stub');
-  return '';
+async function startLiteLLM(settings) {
+  try {
+    const configPath = await generateConfig(settings);
+
+    // Inject the resolved config path into the litellm args list
+    // SERVICE_CONFIG.litellm.args = ['-m', 'litellm', '--config', null, '--port', '4000']
+    // Replace the null placeholder (index 3) with the actual path
+    const config = processManager.SERVICE_CONFIG.litellm;
+    config.args = ['-m', 'litellm', '--config', configPath, '--port', '4000'];
+
+    await processManager.startService('litellm');
+  } catch (err) {
+    logger.warn(`litellm: startLiteLLM failed (optional in Phase 2) — ${err.message}`);
+  }
 }
 
 /**
- * Starts the LiteLLM process with the generated config.
- * TODO Phase 2: implement process spawn via process-manager.js.
- * @param {Object} settings
+ * Stops the LiteLLM process via process-manager.
  * @returns {Promise<void>}
  */
-async function start(settings) {
-  logger.info('litellm: start() — stub');
+async function stopLiteLLM() {
+  try {
+    await processManager.stopService('litellm');
+  } catch (err) {
+    logger.warn(`litellm: stopLiteLLM error — ${err.message}`);
+  }
 }
 
-/**
- * Stops the LiteLLM process.
- * TODO Phase 2: implement via process-manager.js.
- * @returns {Promise<void>}
- */
-async function stop() {
-  logger.info('litellm: stop() — stub');
-}
-
-/**
- * Sends a chat completion request through LiteLLM with routing applied.
- * Streams tokens back via onToken callback.
- * TODO Phase 2: implement with fetch + SSE streaming.
- *
- * @param {Object} params
- * @param {string} params.model
- * @param {Array<{role: string, content: string}>} params.messages
- * @param {boolean} [params.private=false]  - if true, forces local routing
- * @param {Function} params.onToken
- * @param {Function} params.onDone
- * @param {AbortSignal} [params.signal]
- * @returns {Promise<void>}
- */
-async function chatStream({ model, messages, private: isPrivate = false, onToken, onDone, signal }) {
-  logger.info(`litellm: chatStream(${model}, private=${isPrivate}) — stub`);
-  onDone();
-}
-
-module.exports = { generateConfig, start, stop, chatStream, LITELLM_BASE_URL };
+module.exports = {
+  startLiteLLM,
+  stopLiteLLM,
+  generateConfig,
+  LITELLM_BASE_URL,
+};
