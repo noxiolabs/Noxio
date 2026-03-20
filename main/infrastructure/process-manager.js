@@ -297,7 +297,7 @@ async function startService(name) {
         SERVICE_CONFIG[name].executable = await resolvePythonPath();
       }
     } catch (err) {
-      logger.error(`process-manager: [${name}] failed to resolve executable: ${err.message}`);
+      logger.warn(`process-manager: [${name}] executable not found — ${err.message} (install required)`);
       emitStatus(name, 'crashed');
       return;
     }
