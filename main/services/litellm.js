@@ -62,7 +62,7 @@ async function startLiteLLM(settings) {
     // SERVICE_CONFIG.litellm.args = ['-m', 'litellm', '--config', null, '--port', '4000']
     // Replace the null placeholder (index 3) with the actual path
     const config = processManager.SERVICE_CONFIG.litellm;
-    config.args = ['-m', 'litellm', '--config', configPath, '--port', '4000'];
+    config.args = ['--config', configPath, '--port', '4000'];
 
     await processManager.startService('litellm');
   } catch (err) {

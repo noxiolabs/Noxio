@@ -42,7 +42,7 @@ const SERVICE_CONFIG = {
   },
   litellm: {
     executable: null,
-    args: ['-m', 'litellm', '--config', null, '--port', '4000'],
+    args: ['--config', null, '--port', '4000'],
     cwd: null,
     env: {},
     maxRestarts: 5,
@@ -139,27 +139,75 @@ async function resolveOllamaPath() {
 }
 
 /**
- * Resolves the Python executable name (python or python3) on PATH.
- * @returns {Promise<string>} 'python' or 'python3'
+ * Resolves the Python executable path (python or python3) on PATH.
+ * Returns the full path so we can derive the Scripts directory for pip-installed CLIs.
+ * @returns {Promise<string>} Full path to python executable
  */
 async function resolvePythonPath() {
   for (const candidate of ['python', 'python3']) {
     try {
-      await new Promise((resolve, reject) => {
+      const fullPath = await new Promise((resolve, reject) => {
         execFile(
-          candidate,
-          ['--version'],
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-Command', `(Get-Command ${candidate} -ErrorAction SilentlyContinue)?.Source`],
           { windowsHide: true, timeout: 5000 },
-          (err) => (err ? reject(err) : resolve())
+          (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
         );
       });
-      logger.info(`process-manager: resolved Python as "${candidate}"`);
-      return candidate;
+      if (fullPath && !fullPath.includes('WindowsApps')) {
+        logger.info(`process-manager: resolved Python at "${fullPath}"`);
+        return fullPath;
+      }
     } catch (_) {
       // Try next
     }
   }
   throw new Error('Python not found on PATH (tried python and python3)');
+}
+
+/**
+ * Resolves the litellm CLI executable from the Python Scripts directory.
+ * litellm does not support `python -m litellm` — must be run as the CLI entry point.
+ * @returns {Promise<string>} Full path to litellm.exe
+ */
+async function resolveLiteLLMPath() {
+  // First try: litellm.exe directly on PATH
+  for (const candidate of ['litellm', 'litellm.exe']) {
+    try {
+      const fullPath = await new Promise((resolve, reject) => {
+        execFile(
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-Command', `(Get-Command ${candidate} -ErrorAction SilentlyContinue)?.Source`],
+          { windowsHide: true, timeout: 5000 },
+          (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
+        );
+      });
+      if (fullPath && fullPath.endsWith('.exe')) {
+        logger.info(`process-manager: resolved litellm CLI at "${fullPath}"`);
+        return fullPath;
+      }
+    } catch (_) {
+      // Try next
+    }
+  }
+
+  // Second try: derive Scripts dir from Python location
+  try {
+    const pythonPath = await resolvePythonPath();
+    const scriptsDir = path.join(path.dirname(pythonPath), 'Scripts');
+    const litellmExe = path.join(scriptsDir, 'litellm.exe');
+    await new Promise((resolve, reject) => {
+      execFile(litellmExe, ['--version'], { windowsHide: true, timeout: 5000 }, (err) =>
+        err ? reject(err) : resolve()
+      );
+    });
+    logger.info(`process-manager: resolved litellm CLI at "${litellmExe}"`);
+    return litellmExe;
+  } catch (_) {
+    // Fall through
+  }
+
+  throw new Error('litellm CLI not found — run: pip install litellm');
 }
 
 /**
@@ -292,8 +340,11 @@ async function startService(name) {
     try {
       if (name === 'ollama') {
         SERVICE_CONFIG[name].executable = await resolveOllamaPath();
+      } else if (name === 'litellm') {
+        // litellm has a dedicated CLI entry point — cannot be run via `python -m litellm`
+        SERVICE_CONFIG[name].executable = await resolveLiteLLMPath();
       } else {
-        // All Python-based services
+        // comfyui, whisper, kokoro — run via Python
         SERVICE_CONFIG[name].executable = await resolvePythonPath();
       }
     } catch (err) {
