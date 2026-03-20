@@ -72,6 +72,7 @@ export default function App() {
         {hardware && (
           <div className="text-xs text-zinc-500 text-center space-y-1">
             <p>GPU: {hardware.gpu?.name ?? 'Unknown'}</p>
+            <p>CPU: {hardware.cpu?.name ?? 'Unknown'} ({hardware.cpu?.coreCount ?? 0} threads)</p>
             <p>VRAM: {((hardware.gpu?.vramTotalMB ?? 0) / 1024).toFixed(1)}GB &nbsp;·&nbsp; RAM: {((hardware.ram?.totalMB ?? 0) / 1024).toFixed(0)}GB</p>
           </div>
         )}

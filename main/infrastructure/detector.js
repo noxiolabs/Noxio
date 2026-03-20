@@ -191,7 +191,9 @@ async function detectCpu() {
     const raw = await runPowerShell(
       '(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfLogicalProcessors | ConvertTo-Json -Compress)'
     );
-    const data = JSON.parse(raw.trim());
+    const parsed = JSON.parse(raw.trim());
+    // Win32_Processor returns an array on multi-socket systems; normalise to single object
+    const data = Array.isArray(parsed) ? parsed[0] : parsed;
     return {
       name: data.Name || 'Unknown CPU',
       coreCount: data.NumberOfLogicalProcessors || os.cpus().length,
