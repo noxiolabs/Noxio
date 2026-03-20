@@ -7,8 +7,8 @@
  *
  * Detection strategy:
  *   GPU/VRAM   → nvidia-smi (NVSMI path, then PATH fallback)
- *   RAM        → wmic OS query
- *   CPU        → wmic cpu query
+ *   RAM        → PowerShell Get-CimInstance Win32_OperatingSystem (WMIC removed on modern Win11)
+ *   CPU        → PowerShell Get-CimInstance Win32_Processor (WMIC removed on modern Win11)
  *   OS         → Node built-in os module
  *
  * Never throws — every detection step degrades gracefully on failure.
@@ -138,47 +138,36 @@ async function detectGpu() {
 }
 
 /**
- * Detects total and available system RAM via wmic.
+ * Runs a PowerShell command and returns trimmed stdout.
+ * Used as fallback for WMIC which is removed in newer Windows 11 builds.
+ * @param {string} script - PowerShell script to run
+ * @returns {Promise<string>}
+ */
+function runPowerShell(script) {
+  return execFileAsync('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    script,
+  ]);
+}
+
+/**
+ * Detects total and available system RAM.
+ * Tries PowerShell Get-CimInstance (works on all modern Windows 11 builds).
+ * WMIC is deprecated/removed on newer Windows 11 — not used.
  * @returns {Promise<{totalMB: number, availableMB: number}>}
  */
 async function detectRam() {
   const fallback = { totalMB: 0, availableMB: 0 };
 
   try {
-    const raw = await execFileAsync('wmic', [
-      'OS',
-      'get',
-      'TotalVisibleMemorySize,FreePhysicalMemory',
-      '/format:csv',
-    ]);
-
-    // CSV output has a blank first line, then a header line, then data lines
-    const lines = raw
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    // Find the header row and data rows
-    const headerIndex = lines.findIndex((l) =>
-      l.toLowerCase().includes('freephysicalmemory')
+    const raw = await runPowerShell(
+      '(Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory | ConvertTo-Json -Compress)'
     );
-    if (headerIndex === -1 || headerIndex + 1 >= lines.length) {
-      logger.warn('detector: wmic RAM output did not contain expected headers');
-      return fallback;
-    }
-
-    const headers = lines[headerIndex].split(',').map((h) => h.trim().toLowerCase());
-    const dataLine = lines[headerIndex + 1];
-    const values = dataLine.split(',').map((v) => v.trim());
-
-    const freeIdx = headers.indexOf('freephysicalmemory');
-    const totalIdx = headers.indexOf('totalvisiblememorysiz') !== -1
-      ? headers.indexOf('totalvisiblememorysiz')
-      : headers.findIndex((h) => h.startsWith('totalvisible'));
-
-    const freeKB = parseInt(values[freeIdx], 10) || 0;
-    const totalKB = parseInt(values[totalIdx], 10) || 0;
-
+    const data = JSON.parse(raw.trim());
+    const totalKB = data.TotalVisibleMemorySize || 0;
+    const freeKB = data.FreePhysicalMemory || 0;
     return {
       totalMB: Math.round(totalKB / 1024),
       availableMB: Math.round(freeKB / 1024),
@@ -190,43 +179,22 @@ async function detectRam() {
 }
 
 /**
- * Detects the CPU name and logical core count via wmic.
+ * Detects the CPU name and logical core count.
+ * Tries PowerShell Get-CimInstance (works on all modern Windows 11 builds).
+ * WMIC is deprecated/removed on newer Windows 11 — not used.
  * @returns {Promise<{name: string, coreCount: number}>}
  */
 async function detectCpu() {
   const fallback = { name: 'Unknown CPU', coreCount: os.cpus().length };
 
   try {
-    const raw = await execFileAsync('wmic', [
-      'cpu',
-      'get',
-      'Name,NumberOfLogicalProcessors',
-      '/format:csv',
-    ]);
-
-    const lines = raw
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    const headerIndex = lines.findIndex((l) =>
-      l.toLowerCase().includes('numberoflogicalprocessors')
+    const raw = await runPowerShell(
+      '(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfLogicalProcessors | ConvertTo-Json -Compress)'
     );
-    if (headerIndex === -1 || headerIndex + 1 >= lines.length) {
-      logger.warn('detector: wmic CPU output did not contain expected headers');
-      return fallback;
-    }
-
-    const headers = lines[headerIndex].split(',').map((h) => h.trim().toLowerCase());
-    const dataLine = lines[headerIndex + 1];
-    const values = dataLine.split(',').map((v) => v.trim());
-
-    const nameIdx = headers.indexOf('name');
-    const coreIdx = headers.indexOf('numberoflogicalprocessors');
-
+    const data = JSON.parse(raw.trim());
     return {
-      name: values[nameIdx] || 'Unknown CPU',
-      coreCount: parseInt(values[coreIdx], 10) || os.cpus().length,
+      name: data.Name || 'Unknown CPU',
+      coreCount: data.NumberOfLogicalProcessors || os.cpus().length,
     };
   } catch (err) {
     logger.warn(`detector: CPU detection failed — ${err.message}`);

@@ -71,8 +71,8 @@ export default function App() {
         {/* Hardware summary */}
         {hardware && (
           <div className="text-xs text-zinc-500 text-center space-y-1">
-            <p>GPU: {hardware.gpu}</p>
-            <p>VRAM: {hardware.vramTotalGB}GB &nbsp;·&nbsp; RAM: {hardware.ramGB}GB</p>
+            <p>GPU: {hardware.gpu?.name ?? 'Unknown'}</p>
+            <p>VRAM: {((hardware.gpu?.vramTotalMB ?? 0) / 1024).toFixed(1)}GB &nbsp;·&nbsp; RAM: {((hardware.ram?.totalMB ?? 0) / 1024).toFixed(0)}GB</p>
           </div>
         )}
 

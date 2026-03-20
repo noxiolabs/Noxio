@@ -375,6 +375,12 @@ Facts that are not derivable from git log and aren't obvious from reading the co
 - All subprocess calls use `execFile` (never `shell: true`) with a 10s timeout
 - Failures return zeroed fields — they never throw
 
+**WMIC is removed on modern Windows 11 — use PowerShell instead (detector.js)**
+- RAM: `Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory | ConvertTo-Json`
+- CPU: `Get-CimInstance Win32_Processor | Select-Object Name,NumberOfLogicalProcessors | ConvertTo-Json`
+- Run via `powershell.exe -NoProfile -NonInteractive -Command "..."`
+- Do not use `wmic` anywhere — it is absent on Windows 11 23H2+ builds
+
 **`num_ctx: 4096` enforcement (ollama.js)**
 - Hardcoded in every `generateStream` call in `main/services/ollama.js`
 - Must not be removed or made configurable without first solving the OOM problem — Ollama's default context on a 14B model requires ~48GB total; 4096 keeps it safe on 16GB VRAM
