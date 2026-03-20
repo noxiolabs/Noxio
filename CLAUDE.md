@@ -364,6 +364,59 @@ refactor(orchestrator): split into smaller modules
 
 ---
 
+## Phase 2 Implementation Notes
+
+Facts that are not derivable from git log and aren't obvious from reading the code. Reference these when debugging or extending Phase 2 modules.
+
+**nvidia-smi path search order (detector.js)**
+1. `C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe` (hard path)
+2. `nvidia-smi` on PATH
+- On multi-GPU systems: primary GPU is whichever has the highest `vramTotalMB`
+- All subprocess calls use `execFile` (never `shell: true`) with a 10s timeout
+- Failures return zeroed fields — they never throw
+
+**`num_ctx: 4096` enforcement (ollama.js)**
+- Hardcoded in every `generateStream` call in `main/services/ollama.js`
+- Must not be removed or made configurable without first solving the OOM problem — Ollama's default context on a 14B model requires ~48GB total; 4096 keeps it safe on 16GB VRAM
+
+**LiteLLM config file location**
+- Written to `app.getPath('userData')/litellm-config.yaml` — not the app install directory
+- Phase 2 config is local-only (single Ollama model); full cloud routing deferred to Phase 4
+
+**API key handling**
+- API keys are NEVER written to `litellm-config.yaml`
+- Keys are passed as environment variables to the spawned LiteLLM process
+- This keeps keys out of the filesystem and out of the renderer process
+
+**Startup sequence (main/index.js)**
+```
+processManager.init(win)
+healthChecker.startPolling(win)
+detectHardware()              // eager warm-up, result cached for IPC handler
+processManager.startService('ollama')
+litellm.startLiteLLM({})     // optional — non-fatal failure in Phase 2
+```
+
+**LiteLLM deferral decision**
+- LiteLLM startup failure is non-fatal in Phase 2: logged as a warning, app continues
+- Full cloud routing (budget enforcement, provider switching, usage polling) is Phase 4 work
+
+**Process manager details (process-manager.js)**
+- All services spawned with `child_process.spawn()`, `windowsHide: true`, never `shell: true`
+- Ollama path resolution: `%APPDATA%\Local\Programs\Ollama\ollama.exe` → `C:\Program Files\Ollama\ollama.exe` → PATH
+- Python resolution for LiteLLM/ComfyUI/Whisper/Kokoro: `python` → `python3`
+- Restart backoff: `min(1000 * 2^restartCount, 30000)ms`, max 5 retries
+- Graceful shutdown order (reverse start order): kokoro → whisper → comfyui → litellm → ollama
+- Shutdown sequence: SIGTERM → 8s wait → SIGKILL
+
+**Health checker details (health-checker.js)**
+- Poll interval: 5s — covers both HTTP health checks and VRAM update in one tick
+- Uses Node built-in `http` module only (no fetch, no axios)
+- Per-request timeout: 3s
+- `service-status` event emitted only on state transitions, not on every tick
+
+---
+
 ## Development Rhythm
 
 - **Monday** — Review week plan, create feature branches

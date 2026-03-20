@@ -90,10 +90,12 @@ Noxio is in active early development. The architecture is fully designed and a p
 
 | Component | Status | Target |
 |---|---|---|
-| Electron app shell | 🔧 Starting | Week 1-2 |
-| IPC bridge + Redux store | 🔧 Starting | Week 1-2 |
-| Hardware detector | 🔧 Starting | Week 3-4 |
-| Ollama process manager | 🔧 Starting | Week 3-4 |
+| Electron app shell | ✅ Complete | Week 1-2 |
+| IPC bridge + Redux store | ✅ Complete | Week 1-2 |
+| Hardware detector | ✅ Complete | Week 3-4 |
+| Ollama process manager | ✅ Complete | Week 3-4 |
+| Health checker + service polling | ✅ Complete | Week 3-4 |
+| LiteLLM stub (local-only, Phase 2) | ✅ Complete | Week 3-4 |
 | Setup wizard (6 screens) | ⏳ Planned | Week 5-6 |
 | Chat panel with streaming | ⏳ Planned | Week 7-8 |
 | Create panel (image gen) | ⏳ Planned | Week 9-10 |
