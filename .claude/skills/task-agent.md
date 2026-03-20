@@ -26,7 +26,7 @@ P3 — Nice to have (backlog)
 - [ ] Initialise Electron project in repo (npm init, first dependencies, first window)
 
 ### P1 — Critical (this week)
-- [ ] Add CONTRIBUTING.md to repo (even a placeholder)
+- [x] Add CONTRIBUTING.md to repo — done, full content exists
 - [ ] Set up noxiolabs.dev landing page (even a single page)
 - [ ] Set up hello@noxiolabs.dev email
 - [ ] Create Twitter/X @noxiolabs account once domain email is set up
@@ -35,6 +35,7 @@ P3 — Nice to have (backlog)
 ### P2 — Important (this sprint)
 - [ ] Implement hardware detector (main/infrastructure/detector.js)
 - [ ] Implement Ollama process manager (main/services/ollama.js)
+- [ ] Implement LiteLLM process manager (main/services/litellm.js) — config generation, startup, restart on settings change
 - [ ] Implement IPC handlers skeleton (main/ipc/handlers.js)
 - [ ] Set up Redux store structure (all 4 slices, even if empty)
 - [ ] Research: agent framework comparison (Open Interpreter vs alternatives)

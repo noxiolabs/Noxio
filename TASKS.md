@@ -10,7 +10,7 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - GitHub repo created: github.com/noxiolabs/Noxio
 - README, LICENSE (AGPL-3.0), topics, Discussions all live on GitHub
 - **Nothing is in the repo yet** — development starts now
-- Target: v0.1 working by end of Week 16
+- Target: **v0.1-alpha (chat only) by end of Week 8**, v0.1 full release by end of Week 16
 
 ---
 
@@ -40,10 +40,13 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - [ ] `main/infrastructure/process-manager.js` — spawn services, track PIDs, handle crashes, restart logic
 - [ ] `main/infrastructure/health-checker.js` — poll each service endpoint, emit `service-status` events to renderer
 - [ ] `main/services/ollama.js` — pull model, list models, generate (streaming), stop generation
+- [ ] `main/services/litellm.js` — start LiteLLM process, generate config from Redux settings (models + cloud API keys + budget caps), restart on settings change
 - [ ] IPC: `get-hardware-info` handler wired to detector
 - [ ] IPC: `get-service-statuses` handler wired to health-checker
 - [ ] Redux `infrastructure` slice populated from real IPC data
+- [ ] LiteLLM config auto-generated on startup: local Ollama models + any configured cloud providers
 - [ ] Manual test: detector returns correct GPU/VRAM on RTX 5080
+- [ ] Manual test: LiteLLM starts and proxies a request to Ollama successfully
 
 ### Phase 3 — Setup Wizard (Weeks 5–6)
 
@@ -60,17 +63,18 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - [ ] React Router: wizard route vs main app route
 - [ ] Test full wizard flow on reference hardware
 
-### Phase 4 — Chat Panel (Weeks 7–8) — v0.1 MILESTONE
+### Phase 4 — Chat Panel (Weeks 7–8) — v0.1-alpha MILESTONE
 
 - [ ] Streaming chat: `send-chat-message` → Ollama → `stream-token` events → UI appends tokens
 - [ ] `stop-stream` IPC handler
 - [ ] Model selector UI (lists available Ollama models)
 - [ ] Conversation history (stored in Redux, persisted to disk)
 - [ ] `renderer/components/Sidebar.jsx` — Chat / Create / Voice / Agent navigation
-- [ ] `renderer/components/StatusBar.jsx` — VRAM meter, service health dots, current model name
+- [ ] `renderer/components/StatusBar.jsx` — VRAM meter, service health dots, current model name, cloud budget remaining
 - [ ] `vram-update` events wired to StatusBar
 - [ ] Markdown + code block rendering in chat messages
-- [ ] `/image` shortcut stub (no-op in v0.1, graceful message)
+- [ ] `/image` shortcut stub (no-op in v0.1-alpha, graceful message)
+- [ ] Cloud hybrid basic: API key input in Settings, per-provider budget cap enforced, LiteLLM routes to cloud when budget allows and task warrants it
 - [ ] Manual end-to-end test: open app → chat with qwen2.5:14b → streaming works → conversation history persists
 
 ### Phase 5 — Create Panel (Weeks 9–10)

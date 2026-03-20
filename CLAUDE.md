@@ -21,6 +21,88 @@ A local-first AI desktop application. One app replaces ChatGPT, Midjourney, Elev
 
 ---
 
+## Hybrid Cloud Routing (Critical — Read Before Touching Settings or LiteLLM)
+
+Noxio is local-first but has a full hybrid routing layer. This is a core product feature, not an afterthought.
+
+### How routing decisions are made
+
+LiteLLM is the single routing layer. Every LLM request goes through it. The router decides local vs cloud based on three signals, in priority order:
+
+1. **User privacy preference** — if user marks a conversation/task as private, local only. Cloud is never used, even if budget is available.
+2. **Budget** — per-provider monthly spend cap set by the user in Settings. If the provider budget is exhausted, fall back to local automatically. Never exceed budget.
+3. **Task complexity** — tasks the router classifies as needing more capability (long context, multi-step reasoning, complex code) can be routed to cloud if cloud is enabled and budget allows.
+
+### Routing decision tree
+
+```
+Incoming request
+      │
+      ▼
+Is this conversation marked private?
+      │ Yes → Local only (no cloud ever)
+      │ No
+      ▼
+Is cloud enabled for this provider?
+      │ No → Local only
+      │ Yes
+      ▼
+Is provider budget remaining > 0?
+      │ No → Local fallback
+      │ Yes
+      ▼
+Task complexity assessment:
+  - Short, simple, general chat → Local (no reason to spend budget)
+  - Long context (>4K tokens) + local model context limit exceeded → Cloud
+  - Complex reasoning task + user opted into "best quality" → Cloud
+  - Coding task → Local preferred (qwen2.5-coder is strong), Cloud if complexity flag
+      │
+      ▼
+Route to best available model (local or cloud)
+```
+
+### Cloud providers supported (via LiteLLM)
+
+| Provider | Models | Budget key |
+|---|---|---|
+| OpenAI | gpt-4o, gpt-4o-mini | `openai_monthly_usd` |
+| Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 | `anthropic_monthly_usd` |
+| Google | gemini-2.0-flash, gemini-2.5-pro | `google_monthly_usd` |
+
+### Budget enforcement
+
+- Budget caps are stored in the Redux `settings` slice and persisted to disk
+- LiteLLM is configured with these caps at startup and on every settings change
+- Usage tracking: LiteLLM's `/usage` endpoint is polled every 5 minutes, stored in Redux, shown in StatusBar
+- When a provider hits 90% of budget: warn user in StatusBar
+- When a provider hits 100%: auto-fallback to local, notify user, never error silently
+
+### Settings Redux shape (relevant fields)
+
+```js
+settings: {
+  cloudProviders: {
+    openai:    { apiKey: '', enabled: false, monthlyBudgetUSD: 0, usedUSD: 0 },
+    anthropic: { apiKey: '', enabled: false, monthlyBudgetUSD: 0, usedUSD: 0 },
+    google:    { apiKey: '', enabled: false, monthlyBudgetUSD: 0, usedUSD: 0 },
+  },
+  routing: {
+    preferLocal: true,       // always prefer local when capability is comparable
+    allowCloudForLongContext: true,
+    allowCloudForComplexReasoning: false, // off by default, user opts in
+  }
+}
+```
+
+### What NOT to do
+
+- Never send a request to cloud if the conversation is marked private
+- Never silently exceed a budget cap — always fall back to local
+- Never hard-code model names in the router — model lists come from LiteLLM config
+- Never expose API keys in renderer process — keys live in main process only, accessed via IPC
+
+---
+
 ## Project Identity
 
 | | |
@@ -30,6 +112,7 @@ A local-first AI desktop application. One app replaces ChatGPT, Midjourney, Elev
 | License | AGPL-3.0 |
 | Website | noxiolabs.dev |
 | Status | Active development — nothing in repo yet as of March 2026 |
+| Product doc | noxio-product-doc.docx (external, v1.6) — owner has access. Contains full vision, architecture decisions, competitive landscape, learnings log. Ask owner to share the relevant section if you need something not covered in CLAUDE.md. **CLAUDE.md is the source of truth for Claude sessions** — do not require the product doc to work. |
 
 ---
 
