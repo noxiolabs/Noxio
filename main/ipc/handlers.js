@@ -24,6 +24,7 @@
 'use strict';
 
 const { ipcMain } = require('electron');
+const { execFile } = require('child_process');
 const logger = require('../utils/logger');
 const { detectHardware } = require('../infrastructure/detector');
 const processManager = require('../infrastructure/process-manager');
@@ -31,6 +32,18 @@ const ollama = require('../services/ollama');
 const { scanHardware } = require('../wizard/hardware-scan');
 const { recommend } = require('../wizard/model-recommender');
 const { runInstallation } = require('../infrastructure/installer');
+
+/**
+ * Checks if a command is available on PATH by attempting to run it.
+ * @param {string} cmd
+ * @param {string[]} args
+ * @returns {Promise<boolean>}
+ */
+function commandExists(cmd, args) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { timeout: 5000, windowsHide: true }, (err) => resolve(!err));
+  });
+}
 
 /**
  * Registers all IPC handlers. Must be called once after the BrowserWindow is created
@@ -87,6 +100,56 @@ function registerHandlers(mainWindow) {
   });
 
   // ─── Setup Wizard ────────────────────────────────────────────────────────
+
+  /**
+   * Checks whether the required and recommended prerequisites are installed.
+   * Returns a map of { ok, version?, note? } per requirement.
+   * Used by the wizard PrereqScreen (Screen 1) to show what needs installing.
+   * Phase 3.5 (prerequisite checker).
+   */
+  ipcMain.handle('check-prerequisites', async () => {
+    logger.info('IPC: check-prerequisites');
+
+    // ── Ollama (required) ─────────────────────────────────────────────────
+    const ollamaRunning = await ollama.checkRunning();
+
+    // ── Python (recommended — needed for LiteLLM/Whisper/Kokoro) ─────────
+    const pythonOk = (await commandExists('python', ['--version']))
+      || (await commandExists('python3', ['--version']));
+
+    // ── GPU (informational) ───────────────────────────────────────────────
+    let gpuName = null;
+    let gpuOk = false;
+    try {
+      const hw = await detectHardware();
+      gpuOk  = (hw.gpu?.vramTotalMB ?? 0) > 0;
+      gpuName = hw.gpu?.name ?? null;
+    } catch (_) { /* non-fatal */ }
+
+    return {
+      ollama: {
+        ok: ollamaRunning,
+        required: true,
+        label: 'Ollama',
+        note: ollamaRunning ? 'Running on port 11434' : 'Not detected — download and start Ollama',
+        link: 'https://ollama.com/download',
+      },
+      python: {
+        ok: pythonOk,
+        required: false,
+        label: 'Python 3.11+',
+        note: pythonOk ? 'Found on PATH' : 'Not found — needed for LiteLLM, Whisper, and Kokoro',
+        link: 'https://www.python.org/downloads/',
+      },
+      gpu: {
+        ok: gpuOk,
+        required: false,
+        label: gpuName ?? 'NVIDIA GPU',
+        note: gpuOk ? `${gpuName} detected` : 'No NVIDIA GPU detected — local AI will be slow or unavailable',
+        link: null,
+      },
+    };
+  });
 
   /**
    * Returns enriched hardware info for the wizard hardware screen.

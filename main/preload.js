@@ -50,6 +50,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   switchMode: (mode) => ipcRenderer.invoke('switch-mode', mode),
 
   /**
+   * Checks whether required and recommended prerequisites are installed.
+   * Returns a map of { ok, required, label, note, link } per requirement.
+   * @returns {Promise<Record<string, {ok: boolean, required: boolean, label: string, note: string, link: string|null}>>}
+   */
+  checkPrerequisites: () => ipcRenderer.invoke('check-prerequisites'),
+
+  /**
    * Returns enriched hardware info for the setup wizard (VRAM tier, capability flags).
    * @returns {Promise<WizardHardware>}
    */
