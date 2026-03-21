@@ -135,21 +135,32 @@ function registerHandlers(mainWindow) {
   // ─── Chat ────────────────────────────────────────────────────────────────
 
   /**
-   * Sends a message to the LLM via Ollama and streams tokens to the renderer.
-   * Phase 2: routes directly to Ollama, bypassing LiteLLM routing.
-   * Phase 4 will load conversation history from Redux and route via litellm.js.
-   * @param {{ message: string, model: string, conversationId: string }} payload
+   * Returns all locally available Ollama models.
+   * Used by the model selector in the chat panel.
+   * Phase 4.
    */
-  ipcMain.handle('send-chat-message', async (_event, { message, model, conversationId }) => {
-    logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}`);
+  ipcMain.handle('list-models', async () => {
     try {
-      // Phase 2: minimal single-turn messages array.
-      // Phase 4 will load the full conversation history from Redux state.
-      const messages = [{ role: 'user', content: message }];
+      logger.info('IPC: list-models');
+      return await ollama.listModels();
+    } catch (err) {
+      logger.error(`IPC: list-models failed — ${err.message}`);
+      return [];
+    }
+  });
+
+  /**
+   * Sends the full conversation messages array to Ollama and streams tokens back.
+   * Phase 4: accepts full messages array for multi-turn context.
+   * Phase 5 will route via LiteLLM for hybrid cloud support.
+   * @param {{ messages: Array<{role: string, content: string}>, model: string, conversationId: string }} payload
+   */
+  ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId }) => {
+    logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}`);
+    try {
       await ollama.generateStream(model, messages, mainWindow);
     } catch (err) {
       logger.error(`IPC: send-chat-message error — ${err.message}`);
-      // Always send stream-complete so the renderer doesn't hang in streaming state
       mainWindow.webContents.send('stream-complete');
     }
   });
@@ -202,7 +213,7 @@ function registerHandlers(mainWindow) {
     return '[Voice transcription stub — wire up Phase 6]';
   });
 
-  logger.info('IPC handlers registered (Phase 3)');
+  logger.info('IPC handlers registered (Phase 4)');
 }
 
 module.exports = { registerHandlers };

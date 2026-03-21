@@ -71,15 +71,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startInstallation: (config) => ipcRenderer.invoke('start-installation', config),
 
   /**
-   * Sends a chat message. Response tokens arrive via 'stream-token' events,
-   * completion via 'stream-complete'.
-   * @param {string} message
+   * Returns all locally available Ollama models.
+   * @returns {Promise<Array<{name: string, size: number, modifiedAt: string}>>}
+   */
+  listModels: () => ipcRenderer.invoke('list-models'),
+
+  /**
+   * Sends the full conversation messages array to the LLM. Response tokens
+   * arrive via 'stream-token' events, completion via 'stream-complete'.
+   * @param {Array<{role: string, content: string}>} messages - Full conversation history
    * @param {string} model
    * @param {string} conversationId
    * @returns {Promise<void>}
    */
-  sendChatMessage: (message, model, conversationId) =>
-    ipcRenderer.invoke('send-chat-message', { message, model, conversationId }),
+  sendChatMessage: (messages, model, conversationId) =>
+    ipcRenderer.invoke('send-chat-message', { messages, model, conversationId }),
 
   /**
    * Stops an active streaming response.

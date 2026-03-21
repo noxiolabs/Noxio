@@ -1,23 +1,38 @@
 /**
  * @file App.jsx
- * @description Root application component. Routes between the setup wizard and the
- * main app shell based on whether setup has been completed (settings.setupComplete).
+ * @description Root application component. Routes between the setup wizard
+ * (setupComplete = false) and the main app shell (setupComplete = true).
  *
- * Phase 3: shows SetupWizard on first launch; shows a placeholder main shell after setup.
- * Phase 4: the placeholder is replaced with Sidebar + active panel + StatusBar.
+ * Main shell layout:
+ *   [Sidebar 60px] | [Active panel flex-1]
+ *   [StatusBar 32px — full width]
+ *
+ * Phase 4: Chat panel live. Create / Voice / Agent show a "coming soon" placeholder.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { setHardware } from './store/slices/infrastructure';
 import SetupWizard from './pages/Setup';
+import Sidebar from './components/Sidebar';
+import StatusBar from './components/StatusBar';
+import ChatPanel from './pages/Chat';
+
+/** Placeholder shown for panels not yet implemented. */
+function ComingSoon({ label }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+      <p className="text-zinc-400 font-medium">{label}</p>
+      <p className="text-zinc-700 text-sm">Coming in a future phase</p>
+    </div>
+  );
+}
 
 export default function App() {
   const dispatch = useDispatch();
-  const setupComplete = useSelector((state) => state.settings.setupComplete);
+  const setupComplete = useSelector((s) => s.settings.setupComplete);
+  const [activeMode, setActiveMode] = useState('chat');
 
-  // Fetch hardware info and service statuses on mount so Redux is populated
-  // regardless of whether the wizard or main app is shown.
   useEffect(() => {
     async function init() {
       if (!window.electronAPI) return;
@@ -37,12 +52,20 @@ export default function App() {
     return <SetupWizard />;
   }
 
-  // ── Main app shell — Phase 4 will replace this placeholder ────────────────
   return (
-    <div className="flex flex-col h-screen bg-[#0f0f11] text-zinc-100">
-      <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
-        Main app — Phase 4
+    <div className="flex flex-col h-screen bg-[#0f0f11] text-zinc-100 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar activeMode={activeMode} onModeChange={setActiveMode} />
+
+        <main className="flex-1 overflow-hidden">
+          {activeMode === 'chat'   && <ChatPanel />}
+          {activeMode === 'create' && <ComingSoon label="Create" />}
+          {activeMode === 'voice'  && <ComingSoon label="Voice" />}
+          {activeMode === 'agent'  && <ComingSoon label="Agent" />}
+        </main>
       </div>
+
+      <StatusBar />
     </div>
   );
 }
