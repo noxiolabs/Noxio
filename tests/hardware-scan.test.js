@@ -4,9 +4,13 @@
  * Runs against real detector.js — on non-Windows machines nvidia-smi and
  * powershell are absent so detector degrades gracefully (zeroed values).
  * Tests verify the enrichment logic and output shape regardless of platform.
+ *
+ * Also covers the detectHardware() failure fallback added in the pre-phase-4
+ * hardening pass: if detectHardware() throws, scanHardware() must return a
+ * valid WizardHardware object rather than propagating the error.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { scanHardware } from '../main/wizard/hardware-scan';
 
 describe('scanHardware()', () => {
@@ -54,5 +58,41 @@ describe('scanHardware()', () => {
     expect(result.raw).toHaveProperty('ram');
     expect(result.raw).toHaveProperty('cpu');
     expect(result.raw).toHaveProperty('os');
+  });
+});
+
+// ─── Failure path (detectHardware throws) ────────────────────────────────────
+
+describe('scanHardware() — detectHardware failure fallback', () => {
+  it('returns a valid WizardHardware object when detectHardware throws', async () => {
+    // Force detectHardware to throw by mocking the detector module
+    const detector = await import('../main/infrastructure/detector');
+    const spy = vi.spyOn(detector, 'detectHardware').mockRejectedValueOnce(
+      new Error('nvidia-smi not found')
+    );
+
+    const result = await scanHardware();
+
+    // Should NOT throw — must return a valid fallback
+    expect(result).toHaveProperty('raw');
+    expect(result).toHaveProperty('vramTier');
+    expect(result).toHaveProperty('canRunChat');
+    expect(result).toHaveProperty('canRunVoice');
+    expect(result).toHaveProperty('needsCloud');
+
+    // Fallback tier is always '<3' so user is prompted to use cloud
+    expect(result.vramTier).toBe('<3');
+    expect(result.needsCloud).toBe(true);
+    expect(result.canRunVoice).toBe(true); // voice is always available
+
+    // raw must have the correct shape so getVramTier and wizard screens don't crash
+    expect(result.raw).toHaveProperty('gpu');
+    expect(result.raw).toHaveProperty('ram');
+    expect(result.raw).toHaveProperty('cpu');
+    expect(result.raw).toHaveProperty('os');
+    expect(result.raw.gpu).toHaveProperty('vramTotalMB');
+    expect(result.raw.gpu.vramTotalMB).toBe(0);
+
+    spy.mockRestore();
   });
 });

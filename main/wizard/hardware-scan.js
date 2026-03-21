@@ -35,9 +35,16 @@ async function scanHardware() {
     raw = await detectHardware();
   } catch (err) {
     logger.error(`hardware-scan: detectHardware() failed — ${err.message}`);
-    // Return a safe fallback; the wizard will show a warning.
+    // Return a safe fallback matching the detectHardware() output shape so
+    // downstream consumers (getVramTier, wizard screens) never crash.
     return {
-      raw: { gpuName: 'Unknown', vramTotalMB: 0, ramTotalMB: 0, cpuName: 'Unknown', logicalCores: 0 },
+      raw: {
+        gpu: { name: 'Unknown', vendor: 'unknown', vramTotalMB: 0, vramUsedMB: 0, vramAvailableMB: 0, driverVersion: null, nvidiaSmiAvailable: false },
+        ram: { totalMB: 0, availableMB: 0 },
+        cpu: { name: 'Unknown', coreCount: 0 },
+        os:  { platform: 'unknown', version: 'unknown', arch: 'unknown' },
+        detectedAt: new Date().toISOString(),
+      },
       vramTier: '<3',
       canRunChat: false,
       canRunImage: false,
