@@ -50,6 +50,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   switchMode: (mode) => ipcRenderer.invoke('switch-mode', mode),
 
   /**
+   * Returns enriched hardware info for the setup wizard (VRAM tier, capability flags).
+   * @returns {Promise<WizardHardware>}
+   */
+  scanWizardHardware: () => ipcRenderer.invoke('scan-wizard-hardware'),
+
+  /**
    * Returns model recommendations based on selected capabilities and available VRAM.
    * @param {string[]} capabilities - e.g. ['chat', 'coding', 'image', 'voice']
    * @returns {Promise<ModelRecommendationMap>}

@@ -28,6 +28,9 @@ const logger = require('../utils/logger');
 const { detectHardware } = require('../infrastructure/detector');
 const processManager = require('../infrastructure/process-manager');
 const ollama = require('../services/ollama');
+const { scanHardware } = require('../wizard/hardware-scan');
+const { recommend } = require('../wizard/model-recommender');
+const { runInstallation } = require('../infrastructure/installer');
 
 /**
  * Registers all IPC handlers. Must be called once after the BrowserWindow is created
@@ -86,32 +89,47 @@ function registerHandlers(mainWindow) {
   // ─── Setup Wizard ────────────────────────────────────────────────────────
 
   /**
+   * Returns enriched hardware info for the wizard hardware screen.
+   * Includes VRAM tier and capability flags (canRunChat, canRunImage, etc.).
+   * Phase 3.
+   */
+  ipcMain.handle('scan-wizard-hardware', async () => {
+    try {
+      logger.info('IPC: scan-wizard-hardware');
+      return await scanHardware();
+    } catch (err) {
+      logger.error(`IPC: scan-wizard-hardware failed — ${err.message}`);
+      return { error: err.message };
+    }
+  });
+
+  /**
    * Returns model recommendations based on selected capabilities and available VRAM.
-   * TODO Phase 3: wire to main/wizard/model-recommender.js
+   * Wired to hardware-scan.js + model-recommender.js — Phase 3.
    */
   ipcMain.handle('get-model-recommendations', async (_event, capabilities) => {
-    logger.info(`IPC: get-model-recommendations (stub) — capabilities: ${capabilities}`);
-    // Stub returns the 10–18GB tier (RTX 5080 reference hardware)
-    return {
-      chat: { model: 'qwen2.5:14b', sizeGB: 8.5 },
-      coding: { model: 'qwen2.5-coder:14b', sizeGB: 8.5 },
-      image: { model: 'FLUX.1-schnell-fp8', sizeGB: 9.0 },
-      voice: { stt: 'faster-whisper-large-v3', tts: 'kokoro', sizeGB: 1.5 },
-    };
+    try {
+      logger.info(`IPC: get-model-recommendations — capabilities: ${capabilities}`);
+      const hardware = await scanHardware();
+      return recommend(hardware.vramTier, capabilities);
+    } catch (err) {
+      logger.error(`IPC: get-model-recommendations failed — ${err.message}`);
+      return { error: err.message };
+    }
   });
 
   /**
    * Starts the installation sequence for selected services and models.
    * Emits 'install-progress' events during installation.
-   * TODO Phase 3: wire to main/infrastructure/installer.js + main/wizard/model-downloader.js
+   * Wired to installer.js + model-downloader.js — Phase 3.
    */
   ipcMain.handle('start-installation', async (_event, config) => {
-    logger.info('IPC: start-installation (stub)', config);
-    mainWindow.webContents.send('install-progress', {
-      step: 'stub',
-      percent: 100,
-      message: 'Installation stub — wire up Phase 3',
-    });
+    try {
+      logger.info('IPC: start-installation', config);
+      await runInstallation(config, mainWindow);
+    } catch (err) {
+      logger.error(`IPC: start-installation failed — ${err.message}`);
+    }
   });
 
   // ─── Chat ────────────────────────────────────────────────────────────────
@@ -184,7 +202,7 @@ function registerHandlers(mainWindow) {
     return '[Voice transcription stub — wire up Phase 6]';
   });
 
-  logger.info('IPC handlers registered (Phase 2)');
+  logger.info('IPC handlers registered (Phase 3)');
 }
 
 module.exports = { registerHandlers };
