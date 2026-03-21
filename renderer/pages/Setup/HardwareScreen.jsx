@@ -93,7 +93,7 @@ export default function HardwareScreen({ onNext, onHardware }) {
     <div className="flex flex-col items-center justify-center h-full gap-8 px-8">
       <div className="text-center">
         <h2 className="text-2xl font-semibold text-white">Your Hardware</h2>
-        <p className="mt-1 text-zinc-500 text-sm">Here's what Noxio detected on your machine.</p>
+        <p className="mt-1 text-zinc-500 text-sm">Here&apos;s what Noxio detected on your machine.</p>
       </div>
 
       <div className="w-full max-w-sm space-y-3">
