@@ -98,6 +98,8 @@ export default function ModelsScreen({
                   </p>
                   {rec.model ? (
                     <p className="text-sm font-medium text-zinc-100 truncate">{rec.model}</p>
+                  ) : rec.stt ? (
+                    <p className="text-sm font-medium text-violet-400">Runs locally</p>
                   ) : (
                     <p className="text-sm text-zinc-600">Cloud API recommended</p>
                   )}

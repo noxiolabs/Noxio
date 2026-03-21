@@ -14,6 +14,7 @@
 'use strict';
 
 const { spawn, execFile } = require('child_process');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 const logger = require('../utils/logger');
@@ -317,6 +318,25 @@ function spawnService(name) {
 }
 
 /**
+ * Checks if Ollama is already serving on port 11434 before we try to spawn it.
+ * Returns true if an existing instance is detected, false otherwise.
+ * @returns {Promise<boolean>}
+ */
+function checkOllamaAlreadyRunning() {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: '127.0.0.1', port: 11434, path: '/api/tags', timeout: 2000 },
+      (res) => {
+        resolve(res.statusCode >= 200 && res.statusCode < 300);
+        res.resume(); // drain the response
+      }
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+/**
  * Starts a named background service. Resolves executable paths on first call.
  * @param {string} name - 'ollama' | 'litellm' | 'comfyui' | 'whisper' | 'kokoro'
  * @returns {Promise<void>}
@@ -334,6 +354,16 @@ async function startService(name) {
   emitStatus(name, 'starting');
   serviceStates[name].restartCount = 0;
   _intentionalStop[name] = false;
+
+  // If Ollama is already serving externally, adopt it rather than spawning a second instance.
+  if (name === 'ollama') {
+    const alreadyRunning = await checkOllamaAlreadyRunning();
+    if (alreadyRunning) {
+      logger.info('process-manager: [ollama] detected existing instance on port 11434 — adopting, skipping spawn');
+      emitStatus(name, 'running');
+      return;
+    }
+  }
 
   // Resolve executable on first start
   if (!SERVICE_CONFIG[name].executable) {

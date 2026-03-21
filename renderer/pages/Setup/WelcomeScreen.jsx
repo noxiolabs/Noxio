@@ -24,11 +24,11 @@ export default function WelcomeScreen({ onNext }) {
         <p className="text-xl text-zinc-400">Your personal AI. Runs locally. No subscriptions.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 max-w-xs">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
         {FEATURES.map((f) => (
-          <div key={f} className="flex items-start gap-2 text-sm text-zinc-500">
-            <div className="w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0 mt-0.5" />
-            <span>{f}</span>
+          <div key={f} className="flex items-center gap-2 text-sm text-zinc-500">
+            <div className="w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0" />
+            <span className="whitespace-nowrap">{f}</span>
           </div>
         ))}
       </div>
