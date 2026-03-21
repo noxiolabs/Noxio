@@ -18,15 +18,21 @@ export default function ModelSelector({ conversationId }) {
   const [models, setModels] = useState([]);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+  // Tracks whether the initial IPC fetch has already run so the effect
+  // never fires a second time if selectedModel changes after auto-select.
+  const loadedRef = useRef(false);
 
-  // Fetch available models on mount
+  // Fetch available models once on mount
   useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+
     async function load() {
       if (!window.electronAPI) return;
       const list = await window.electronAPI.listModels();
       if (list?.length) {
         setModels(list);
-        // Auto-select first model if nothing selected yet
+        // Auto-select first model if nothing is selected yet
         if (!selectedModel) {
           dispatch(setSelectedModel(list[0].name));
         }

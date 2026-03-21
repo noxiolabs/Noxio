@@ -62,12 +62,12 @@ export default function StatusBar() {
         {model ?? 'No model selected'}
       </div>
 
-      {/* Right: VRAM meter */}
+      {/* Right: VRAM meter — shows 'checking' until the first vram-update arrives */}
       <div className="flex items-center">
-        {vram ? (
-          <VramMeter usedGB={vram.usedGB ?? 0} availableGB={vram.availableGB ?? 0} />
+        {vram.availableGB > 0 ? (
+          <VramMeter usedGB={vram.usedGB} availableGB={vram.availableGB} />
         ) : (
-          <span className="text-[10px] text-zinc-700">VRAM —</span>
+          <span className="text-[10px] text-zinc-700 animate-pulse">VRAM checking…</span>
         )}
       </div>
     </div>

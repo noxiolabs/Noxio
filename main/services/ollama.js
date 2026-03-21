@@ -257,6 +257,18 @@ async function generateStream(model, messages, win) {
   });
 
   return new Promise((resolve, reject) => {
+    // Guard: ensure stream-complete is sent to the renderer exactly once,
+    // regardless of which exit path (done flag, res.end, error, abort) fires.
+    let completeSent = false;
+    function sendComplete() {
+      if (completeSent) return;
+      completeSent = true;
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('stream-complete');
+      }
+      _currentController = null;
+    }
+
     const options = {
       hostname: '127.0.0.1',
       port: 11434,
@@ -270,10 +282,7 @@ async function generateStream(model, messages, win) {
 
     req = http.request(options, (res) => {
       if (res.statusCode === 404) {
-        if (!aborted && win && !win.isDestroyed()) {
-          win.webContents.send('stream-complete');
-        }
-        _currentController = null;
+        sendComplete();
         reject(new ModelNotFoundError(model));
         return;
       }
@@ -300,10 +309,7 @@ async function generateStream(model, messages, win) {
             }
 
             if (obj.done === true) {
-              if (win && !win.isDestroyed()) {
-                win.webContents.send('stream-complete');
-              }
-              _currentController = null;
+              sendComplete();
               resolve();
             }
           } catch (parseErr) {
@@ -313,40 +319,28 @@ async function generateStream(model, messages, win) {
       });
 
       res.on('end', () => {
-        if (!aborted && win && !win.isDestroyed()) {
-          win.webContents.send('stream-complete');
-        }
-        _currentController = null;
+        // Fires after all data events. If obj.done already called sendComplete,
+        // this is a no-op. Covers models that don't send a done:true line.
+        sendComplete();
         resolve();
       });
 
       res.on('error', (err) => {
-        if (!aborted) {
-          logger.error(`ollama: generateStream response error — ${err.message}`);
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('stream-complete');
-          }
-        }
-        _currentController = null;
+        logger.error(`ollama: generateStream response error — ${err.message}`);
+        sendComplete();
         resolve(); // resolve (not reject) so the IPC handler doesn't throw to renderer
       });
     });
 
     req.on('error', (err) => {
       if (aborted) {
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('stream-complete');
-        }
-        _currentController = null;
+        sendComplete();
         resolve();
         return;
       }
 
       logger.error(`ollama: generateStream request error — ${err.message}`);
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('stream-complete');
-      }
-      _currentController = null;
+      sendComplete();
 
       if (err.code === 'ECONNREFUSED') {
         reject(new OllamaNotInstalledError());

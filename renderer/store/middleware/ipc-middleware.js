@@ -74,7 +74,10 @@ export function setupIpcListeners(store) {
 export const ipcMiddleware = (_api) => (next) => (action) => {
   if (action?.meta?.ipc && window.electronAPI) {
     const { channel, args } = action.meta;
-    if (channel) {
+    if (!channel) {
+      // Programmer error — flag it clearly rather than silently discarding the call
+      console.error(`ipcMiddleware: action "${action.type}" has meta.ipc=true but no channel specified`);
+    } else {
       window.electronAPI[channel]?.(...(args || []));
     }
   }

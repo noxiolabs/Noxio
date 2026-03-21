@@ -17,6 +17,7 @@ import SetupWizard from './pages/Setup';
 import Sidebar from './components/Sidebar';
 import StatusBar from './components/StatusBar';
 import ChatPanel from './pages/Chat';
+import ErrorBoundary from './components/ErrorBoundary';
 
 /** Placeholder shown for panels not yet implemented. */
 function ComingSoon({ label }) {
@@ -40,32 +41,45 @@ export default function App() {
         window.electronAPI.getHardwareInfo(),
         window.electronAPI.getServiceStatuses(),
       ]);
-      dispatch(setHardware(hw));
-      Object.entries(statuses).forEach(([service, state]) => {
-        dispatch({ type: 'infrastructure/updateServiceStatus', payload: { service, ...state } });
-      });
+      // Only dispatch hardware if the main process returned a valid result.
+      // handlers.js returns { error: string } on failure — don't store that
+      // shape in the infrastructure slice.
+      if (hw && !hw.error) {
+        dispatch(setHardware(hw));
+      }
+      if (statuses && !statuses.error) {
+        Object.entries(statuses).forEach(([service, state]) => {
+          dispatch({ type: 'infrastructure/updateServiceStatus', payload: { service, ...state } });
+        });
+      }
     }
     init();
   }, [dispatch]);
 
   if (!setupComplete) {
-    return <SetupWizard />;
+    return (
+      <ErrorBoundary>
+        <SetupWizard />
+      </ErrorBoundary>
+    );
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#0f0f11] text-zinc-100 overflow-hidden">
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar activeMode={activeMode} onModeChange={setActiveMode} />
+    <ErrorBoundary>
+      <div className="flex flex-col h-screen bg-[#0f0f11] text-zinc-100 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar activeMode={activeMode} onModeChange={setActiveMode} />
 
-        <main className="flex-1 overflow-hidden">
-          {activeMode === 'chat'   && <ChatPanel />}
-          {activeMode === 'create' && <ComingSoon label="Create" />}
-          {activeMode === 'voice'  && <ComingSoon label="Voice" />}
-          {activeMode === 'agent'  && <ComingSoon label="Agent" />}
-        </main>
+          <main className="flex-1 overflow-hidden">
+            {activeMode === 'chat'   && <ChatPanel />}
+            {activeMode === 'create' && <ComingSoon label="Create" />}
+            {activeMode === 'voice'  && <ComingSoon label="Voice" />}
+            {activeMode === 'agent'  && <ComingSoon label="Agent" />}
+          </main>
+        </div>
+
+        <StatusBar />
       </div>
-
-      <StatusBar />
-    </div>
+    </ErrorBoundary>
   );
 }

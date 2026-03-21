@@ -63,7 +63,7 @@ function registerHandlers(mainWindow) {
       logger.info('IPC: get-hardware-info');
       return await detectHardware();
     } catch (err) {
-      logger.error(`IPC: get-hardware-info failed — ${err.message}`);
+      logger.error(`IPC: get-hardware-info failed — ${err.message}\n${err.stack}`);
       return { error: err.message };
     }
   });
@@ -77,7 +77,7 @@ function registerHandlers(mainWindow) {
       logger.info('IPC: get-service-statuses');
       return processManager.getServiceStates();
     } catch (err) {
-      logger.error(`IPC: get-service-statuses failed — ${err.message}`);
+      logger.error(`IPC: get-service-statuses failed — ${err.message}\n${err.stack}`);
       return { error: err.message };
     }
   });
@@ -161,7 +161,7 @@ function registerHandlers(mainWindow) {
       logger.info('IPC: scan-wizard-hardware');
       return await scanHardware();
     } catch (err) {
-      logger.error(`IPC: scan-wizard-hardware failed — ${err.message}`);
+      logger.error(`IPC: scan-wizard-hardware failed — ${err.message}\n${err.stack}`);
       return { error: err.message };
     }
   });
@@ -176,7 +176,7 @@ function registerHandlers(mainWindow) {
       const hardware = await scanHardware();
       return recommend(hardware.vramTier, capabilities);
     } catch (err) {
-      logger.error(`IPC: get-model-recommendations failed — ${err.message}`);
+      logger.error(`IPC: get-model-recommendations failed — ${err.message}\n${err.stack}`);
       return { error: err.message };
     }
   });
@@ -191,7 +191,7 @@ function registerHandlers(mainWindow) {
       logger.info('IPC: start-installation', config);
       await runInstallation(config, mainWindow);
     } catch (err) {
-      logger.error(`IPC: start-installation failed — ${err.message}`);
+      logger.error(`IPC: start-installation failed — ${err.message}\n${err.stack}`);
     }
   });
 
@@ -207,7 +207,7 @@ function registerHandlers(mainWindow) {
       logger.info('IPC: list-models');
       return await ollama.listModels();
     } catch (err) {
-      logger.error(`IPC: list-models failed — ${err.message}`);
+      logger.error(`IPC: list-models failed — ${err.message}\n${err.stack}`);
       return [];
     }
   });
@@ -223,8 +223,9 @@ function registerHandlers(mainWindow) {
     try {
       await ollama.generateStream(model, messages, mainWindow);
     } catch (err) {
-      logger.error(`IPC: send-chat-message error — ${err.message}`);
-      mainWindow.webContents.send('stream-complete');
+      // generateStream guarantees stream-complete is sent exactly once via its
+      // internal completeSent flag, so no need to send it again here.
+      logger.error(`IPC: send-chat-message error — ${err.message}\n${err.stack}`);
     }
   });
 
@@ -248,12 +249,10 @@ function registerHandlers(mainWindow) {
    * TODO Phase 5: wire to main/services/comfyui.js
    */
   ipcMain.handle('generate-image', async (_event, { prompt, style, quality }) => {
-    logger.info(`IPC: generate-image (stub) — style: ${style}, quality: ${quality}`);
-    mainWindow.webContents.send('install-progress', {
-      step: 'image-gen',
-      percent: 100,
-      message: `Image generation stub — prompt: "${prompt}"`,
-    });
+    logger.info(`IPC: generate-image (stub) — style: ${style}, quality: ${quality}, prompt: "${prompt}"`);
+    // Return an explicit not-implemented error so callers can handle it gracefully
+    // rather than receiving a misleading install-progress event.
+    return { error: 'Image generation is not yet available — coming in Phase 5' };
   });
 
   // ─── Voice ───────────────────────────────────────────────────────────────

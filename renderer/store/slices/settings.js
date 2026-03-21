@@ -80,9 +80,16 @@ const settingsSlice = createSlice({
      */
     updateCloudProvider(state, action) {
       const { provider, config } = action.payload;
-      if (state.cloudProviders[provider]) {
-        Object.assign(state.cloudProviders[provider], config);
+      if (!state.cloudProviders[provider]) return;
+      const sanitised = { ...config };
+      // Guard: budget and usage must never be negative
+      if (sanitised.monthlyBudgetUSD !== undefined) {
+        sanitised.monthlyBudgetUSD = Math.max(0, Number(sanitised.monthlyBudgetUSD) || 0);
       }
+      if (sanitised.usedUSD !== undefined) {
+        sanitised.usedUSD = Math.max(0, Number(sanitised.usedUSD) || 0);
+      }
+      Object.assign(state.cloudProviders[provider], sanitised);
     },
 
     /**

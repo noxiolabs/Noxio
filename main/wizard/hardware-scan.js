@@ -3,8 +3,6 @@
  * @description Wraps detector.js to produce the structured hardware object used
  * by the setup wizard (Screen 2 — Hardware). Adds derived fields like VRAM tier
  * and capability flags so the wizard UI doesn't need to do any logic itself.
- *
- * TODO Phase 3: implement — call detector.js and enrich the result.
  */
 
 'use strict';
@@ -24,12 +22,30 @@ const logger = require('../utils/logger');
 
 /**
  * Runs a hardware scan and returns enriched results for the wizard.
- * TODO Phase 3: implement — currently returns stub data.
+ * Falls back to zeroed defaults if detection fails so the wizard always
+ * gets a valid object and can display a "detection failed" state instead
+ * of crashing.
  * @returns {Promise<WizardHardware>}
  */
 async function scanHardware() {
-  logger.info('hardware-scan: scanHardware() — stub');
-  const raw = await detectHardware();
+  logger.info('hardware-scan: scanHardware() — starting');
+
+  let raw;
+  try {
+    raw = await detectHardware();
+  } catch (err) {
+    logger.error(`hardware-scan: detectHardware() failed — ${err.message}`);
+    // Return a safe fallback; the wizard will show a warning.
+    return {
+      raw: { gpuName: 'Unknown', vramTotalMB: 0, ramTotalMB: 0, cpuName: 'Unknown', logicalCores: 0 },
+      vramTier: '<3',
+      canRunChat: false,
+      canRunImage: false,
+      canRunVoice: true,
+      needsCloud: true,
+    };
+  }
+
   const tier = getVramTier(raw);
   return {
     raw,
