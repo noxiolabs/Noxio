@@ -9,73 +9,90 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - POC validated on reference hardware (RTX 5080, Windows 11)
 - GitHub repo created: github.com/noxiolabs/Noxio
 - README, LICENSE (AGPL-3.0), topics, Discussions all live on GitHub
-- **Nothing is in the repo yet** — development starts now
-- Target: **v0.1-alpha (chat only) by end of Week 8**, v0.1 full release by end of Week 16
+- **Phases 1–4 complete** — Chat panel fully working with streaming, conversation history, model selector, markdown rendering
+- **83 unit tests passing**
+- Target: **v0.1-alpha (chat only) — DELIVERED**, v0.1 full release by end of Week 16
+- Current week: **Week 9**
+
+---
+
+## Completed Phases
+
+### Phase 1 — Electron Shell + IPC Bridge (Weeks 1–2) ✅ COMPLETE
+
+- [x] Scaffold repo structure (`main/`, `renderer/`, `configs/`)
+- [x] `main/index.js` — BrowserWindow, load preload, dev/prod mode handling
+- [x] `main/preload.js` — contextBridge, expose `window.electronAPI`
+- [x] `main/ipc/handlers.js` — register all IPC channels (stubs OK for now)
+- [x] `renderer/store/` — define all Redux slices (infrastructure, chat, create, voice, settings) with initial state, even if empty
+- [x] `renderer/store/middleware/ipc-middleware.js` — IPC ↔ Redux sync
+- [x] Basic React shell renders in Electron window (no styling needed yet)
+- [x] `npm run dev` starts Electron with hot reload
+- [x] `package.json` with all required scripts: dev, build, package, lint, test
+- [x] `.eslintrc` and `.prettierrc` config files
+- [x] `CONTRIBUTING.md` placeholder
+
+### Phase 2 — Infrastructure (Weeks 3–4) ✅ COMPLETE
+
+- [x] `main/infrastructure/detector.js` — detect GPU name, VRAM (total + free), RAM, OS version, NVIDIA driver version
+- [x] `main/infrastructure/process-manager.js` — spawn services, track PIDs, handle crashes, restart logic
+- [x] `main/infrastructure/health-checker.js` — poll each service endpoint, emit `service-status` events to renderer
+- [x] `main/services/ollama.js` — pull model, list models, generate (streaming), stop generation
+- [x] `main/services/litellm.js` — start LiteLLM process, generate config from Redux settings (models + cloud API keys + budget caps), restart on settings change
+- [x] IPC: `get-hardware-info` handler wired to detector
+- [x] IPC: `get-service-statuses` handler wired to health-checker
+- [x] Redux `infrastructure` slice populated from real IPC data
+- [x] LiteLLM config auto-generated on startup: local Ollama models + any configured cloud providers
+- [x] Manual test: detector returns correct GPU/VRAM on RTX 5080
+- [x] Manual test: LiteLLM starts and proxies a request to Ollama successfully
+
+### Phase 3 — Setup Wizard (Weeks 5–6) ✅ COMPLETE
+
+- [x] `main/wizard/hardware-scan.js` — wraps detector, returns structured hardware object
+- [x] `main/wizard/model-recommender.js` — VRAM-aware recommendation algorithm (see CLAUDE.md for tiers)
+- [x] `main/wizard/model-downloader.js` — download models via Ollama, emit `download-progress` events
+- [x] `main/infrastructure/installer.js` — silent install of Ollama (and eventually ComfyUI, Whisper, Kokoro)
+- [x] Setup wizard UI: Screen 1 — Welcome
+- [x] Setup wizard UI: Screen 2 — Hardware (calls `get-hardware-info`)
+- [x] Setup wizard UI: Screen 3 — Capabilities (checkboxes)
+- [x] Setup wizard UI: Screen 4 — Models (calls `get-model-recommendations`, shows download sizes)
+- [x] Setup wizard UI: Screen 5 — Installing (progress bar, streaming install events)
+- [x] Setup wizard UI: Screen 6 — Ready (health-checker confirms all services up)
+- [x] React Router: wizard route vs main app route
+- [x] Test full wizard flow on reference hardware
+
+### Phase 3.5 — Prerequisites Screen ✅ COMPLETE
+
+- [x] Prerequisites check screen added to wizard flow (7 screens total)
+- [x] Detects and guides installation of required system dependencies before wizard proceeds
+
+### Phase 4 — Chat Panel (Weeks 7–8) ✅ COMPLETE — v0.1-alpha MILESTONE DELIVERED
+
+- [x] Streaming chat: `send-chat-message` → Ollama → `stream-token` events → UI appends tokens
+- [x] `stop-stream` IPC handler
+- [x] Model selector UI (lists available Ollama models)
+- [x] Conversation history (stored in Redux, persisted to disk)
+- [x] `renderer/components/Sidebar.jsx` — Chat / Create / Voice / Agent navigation
+- [x] `renderer/components/StatusBar.jsx` — VRAM meter, service health dots, current model name, cloud budget remaining
+- [x] `vram-update` events wired to StatusBar
+- [x] Markdown + code block rendering in chat messages
+- [x] `/image` shortcut stub (no-op in v0.1-alpha, graceful message)
+- [x] Cloud hybrid basic: API key input in Settings, per-provider budget cap enforced, LiteLLM routes to cloud when budget allows and task warrants it
+- [x] Manual end-to-end test: open app → chat with qwen2.5:14b → streaming works → conversation history persists
+
+### Phase 4 Hardening (Week 9) ✅ COMPLETE
+
+- [x] Stream timeout fix (60s timeout to prevent hung streams)
+- [x] Conversation ID race condition fix
+- [x] Duplicate `stream-complete` event fix
+- [x] Error boundaries added to renderer
+- [x] 83 unit tests written and passing
 
 ---
 
 ## Active Sprint
 
-**Week 1–2: Electron Shell + IPC Bridge**
-
-- [ ] Scaffold repo structure (`main/`, `renderer/`, `configs/`)
-- [ ] `main/index.js` — BrowserWindow, load preload, dev/prod mode handling
-- [ ] `main/preload.js` — contextBridge, expose `window.electronAPI`
-- [ ] `main/ipc/handlers.js` — register all IPC channels (stubs OK for now)
-- [ ] `renderer/store/` — define all Redux slices (infrastructure, chat, create, voice, settings) with initial state, even if empty
-- [ ] `renderer/store/middleware/ipc-middleware.js` — IPC ↔ Redux sync
-- [ ] Basic React shell renders in Electron window (no styling needed yet)
-- [ ] `npm run dev` starts Electron with hot reload
-- [ ] `package.json` with all required scripts: dev, build, package, lint, test
-- [ ] `.eslintrc` and `.prettierrc` config files
-- [ ] `CONTRIBUTING.md` placeholder
-
----
-
-## Upcoming Phases
-
-### Phase 2 — Infrastructure (Weeks 3–4)
-
-- [ ] `main/infrastructure/detector.js` — detect GPU name, VRAM (total + free), RAM, OS version, NVIDIA driver version
-- [ ] `main/infrastructure/process-manager.js` — spawn services, track PIDs, handle crashes, restart logic
-- [ ] `main/infrastructure/health-checker.js` — poll each service endpoint, emit `service-status` events to renderer
-- [ ] `main/services/ollama.js` — pull model, list models, generate (streaming), stop generation
-- [ ] `main/services/litellm.js` — start LiteLLM process, generate config from Redux settings (models + cloud API keys + budget caps), restart on settings change
-- [ ] IPC: `get-hardware-info` handler wired to detector
-- [ ] IPC: `get-service-statuses` handler wired to health-checker
-- [ ] Redux `infrastructure` slice populated from real IPC data
-- [ ] LiteLLM config auto-generated on startup: local Ollama models + any configured cloud providers
-- [ ] Manual test: detector returns correct GPU/VRAM on RTX 5080
-- [ ] Manual test: LiteLLM starts and proxies a request to Ollama successfully
-
-### Phase 3 — Setup Wizard (Weeks 5–6)
-
-- [ ] `main/wizard/hardware-scan.js` — wraps detector, returns structured hardware object
-- [ ] `main/wizard/model-recommender.js` — VRAM-aware recommendation algorithm (see CLAUDE.md for tiers)
-- [ ] `main/wizard/model-downloader.js` — download models via Ollama, emit `download-progress` events
-- [ ] `main/infrastructure/installer.js` — silent install of Ollama (and eventually ComfyUI, Whisper, Kokoro)
-- [ ] Setup wizard UI: Screen 1 — Welcome
-- [ ] Setup wizard UI: Screen 2 — Hardware (calls `get-hardware-info`)
-- [ ] Setup wizard UI: Screen 3 — Capabilities (checkboxes)
-- [ ] Setup wizard UI: Screen 4 — Models (calls `get-model-recommendations`, shows download sizes)
-- [ ] Setup wizard UI: Screen 5 — Installing (progress bar, streaming install events)
-- [ ] Setup wizard UI: Screen 6 — Ready (health-checker confirms all services up)
-- [ ] React Router: wizard route vs main app route
-- [ ] Test full wizard flow on reference hardware
-
-### Phase 4 — Chat Panel (Weeks 7–8) — v0.1-alpha MILESTONE
-
-- [ ] Streaming chat: `send-chat-message` → Ollama → `stream-token` events → UI appends tokens
-- [ ] `stop-stream` IPC handler
-- [ ] Model selector UI (lists available Ollama models)
-- [ ] Conversation history (stored in Redux, persisted to disk)
-- [ ] `renderer/components/Sidebar.jsx` — Chat / Create / Voice / Agent navigation
-- [ ] `renderer/components/StatusBar.jsx` — VRAM meter, service health dots, current model name, cloud budget remaining
-- [ ] `vram-update` events wired to StatusBar
-- [ ] Markdown + code block rendering in chat messages
-- [ ] `/image` shortcut stub (no-op in v0.1-alpha, graceful message)
-- [ ] Cloud hybrid basic: API key input in Settings, per-provider budget cap enforced, LiteLLM routes to cloud when budget allows and task warrants it
-- [ ] Manual end-to-end test: open app → chat with qwen2.5:14b → streaming works → conversation history persists
+**Week 9: Phase 5 — Create Panel (Image Generation)**
 
 ### Phase 5 — Create Panel (Weeks 9–10)
 
