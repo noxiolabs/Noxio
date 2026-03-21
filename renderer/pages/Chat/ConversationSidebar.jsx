@@ -62,9 +62,12 @@ export default function ConversationSidebar() {
           <p className="text-center text-zinc-700 text-xs mt-6 px-3">No conversations yet</p>
         ) : (
           conversations.map((conv) => (
-            <button
+            <div
               key={conv.id}
+              role="button"
+              tabIndex={0}
               onClick={() => dispatch(setActiveConversation(conv.id))}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') dispatch(setActiveConversation(conv.id)); }}
               className={`group w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors ${
                 conv.id === activeId
                   ? 'bg-violet-600/15 text-zinc-100'
@@ -87,7 +90,7 @@ export default function ConversationSidebar() {
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
-            </button>
+            </div>
           ))
         )}
       </div>

@@ -26,8 +26,8 @@ export default function WelcomeScreen({ onNext }) {
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 max-w-xs">
         {FEATURES.map((f) => (
-          <div key={f} className="flex items-center gap-2 text-sm text-zinc-500">
-            <div className="w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0" />
+          <div key={f} className="flex items-start gap-2 text-sm text-zinc-500">
+            <div className="w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0 mt-0.5" />
             <span>{f}</span>
           </div>
         ))}

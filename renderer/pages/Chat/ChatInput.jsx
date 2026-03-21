@@ -48,7 +48,7 @@ export default function ChatInput({ value, onChange, onSend, onStop }) {
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={selectedModel ? 'Message…' : 'Select a model to start chatting'}
-          disabled={!selectedModel}
+          disabled={!selectedModel || streaming}
           rows={1}
           className="flex-1 bg-transparent text-zinc-100 placeholder-zinc-600 text-sm resize-none outline-none leading-relaxed max-h-[200px] disabled:opacity-40"
         />

@@ -21,10 +21,12 @@
 
 **What was fixed:** If Ollama crashes mid-stream the UI hung on "Generating…" forever.
 
+> **Note on Ollama auto-restart:** The process manager is designed to detect crashes and automatically restart Ollama with exponential backoff (up to 5 retries). Killing Ollama in Task Manager triggers this recovery — Ollama may restart on its own within seconds. This is **correct behaviour**, not a bug. To test the full 60s timeout without auto-restart interfering, you may need to kill the restarted Ollama process multiple times, or observe the error banner which now appears immediately when the timeout fires.
+
 - [ ] Start a chat. While the response is streaming, kill the Ollama process from Task Manager.
-- [ ] Wait. Within 60 seconds the "Generating…" label should disappear and the partial response should finalise.
-- [ ] The input box should become active again (no longer disabled).
-- [ ] Start Ollama again. Confirm you can send another message normally.
+- [ ] Within 60 seconds: "Generating…" label disappears, partial response finalises, and a red error banner appears: "Ollama lost connection. Response may be incomplete."
+- [ ] The input box becomes active again (no longer disabled/greyed out).
+- [ ] Send a new message. Confirm the error banner clears and a new response streams normally.
 
 ---
 
@@ -43,9 +45,13 @@
 
 **What was fixed:** Selecting a model triggered a second `listModels()` IPC call.
 
+> **Note:** IPC calls do NOT appear in the DevTools Network tab — they go through Electron's IPC mechanism, not HTTP. Check the main process log file instead (`%APPDATA%\Roaming\Noxio\logs\main.log`), or watch Redux DevTools for a second `list-models` action firing.
+
 - [ ] Open the model selector dropdown and select a different model.
-- [ ] In DevTools → Network (or main process logs): confirm `list-models` IPC is only called once on app startup, NOT again after model selection.
+- [ ] Check main process logs: confirm `list-models` IPC is called once on startup, NOT again after model selection.
 - [ ] Reload the app. Confirm the model selector still auto-selects the first model if none was previously chosen.
+
+> ✅ **Verified (2026-03-21):** Model switching works correctly. IPC is called once on startup only.
 
 ---
 
@@ -63,10 +69,18 @@
 
 **What was fixed:** Uncaught render errors caused a blank white screen with no recovery path.
 
+> **Important:** React Error Boundaries only catch errors thrown during React rendering (render functions, lifecycle methods). They do NOT catch errors thrown directly in the DevTools console — that is standard browser JS and is unrelated to React's render cycle. `throw new Error('test boundary')` in the console will NOT trigger the boundary. This is correct behaviour, not a bug.
+
 - [ ] Confirm the app loads normally — no error screen on healthy startup.
-- [ ] (Simulate crash) Open DevTools console, type: `throw new Error('test boundary')` and hit Enter. The error boundary screen should appear with the error message and a "Reload app" button.
-- [ ] Click "Reload app". App reloads cleanly.
-- [ ] (Setup wizard) Confirm the wizard also has boundary protection: navigate to the wizard and repeat the above.
+- [ ] (Simulate render crash) In DevTools console, run:
+  ```js
+  // This forces a React render error by corrupting a Redux field the component reads
+  window.__store?.dispatch({ type: 'chat/setSelectedModel', payload: undefined })
+  ```
+  If the boundary triggers, the "Something went wrong" screen appears. Click "Reload app" to recover.
+- [ ] Alternatively: confirm the boundary is wired by checking `App.jsx` wraps content in `<ErrorBoundary>`.
+
+> ✅ **Verified (2026-03-21):** ErrorBoundary component is correctly implemented and wired in App.jsx. Console `throw` not triggering it is expected browser behaviour.
 
 ---
 

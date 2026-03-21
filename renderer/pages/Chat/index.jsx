@@ -31,7 +31,8 @@ export default function ChatPanel() {
   const activeId      = useSelector((s) => s.chat.activeConversationId);
   const selectedModel = useSelector((s) => s.chat.selectedModel);
   const streaming     = useSelector((s) => s.chat.streaming);
-  const [input, setInput]   = useState('');
+  const [input, setInput]         = useState('');
+  const [streamError, setStreamError] = useState('');
 
   const activeConversation = conversations.find((c) => c.id === activeId);
 
@@ -49,6 +50,7 @@ export default function ChatPanel() {
   }, [streaming]);
 
   function handleSend() {
+    setStreamError('');
     const content = input.trim();
     if (!content || !selectedModel || streaming) return;
 
@@ -82,6 +84,7 @@ export default function ChatPanel() {
     clearTimeout(streamTimeoutRef.current);
     streamTimeoutRef.current = setTimeout(() => {
       dispatch(finaliseStream());
+      setStreamError('Ollama lost connection. Response may be incomplete.');
     }, STREAM_TIMEOUT_MS);
   }
 
@@ -119,6 +122,9 @@ export default function ChatPanel() {
           onSend={handleSend}
           onStop={handleStop}
         />
+        {streamError && (
+          <p className="text-center text-xs text-red-400/80 pb-2 px-4">{streamError}</p>
+        )}
       </div>
     </div>
   );
