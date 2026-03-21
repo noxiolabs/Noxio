@@ -325,7 +325,7 @@ function spawnService(name) {
 function checkOllamaAlreadyRunning() {
   return new Promise((resolve) => {
     const req = http.get(
-      { hostname: '127.0.0.1', port: 11434, path: '/api/tags', timeout: 2000 },
+      { hostname: '127.0.0.1', port: 11434, path: '/api/tags', timeout: 5000 },
       (res) => {
         resolve(res.statusCode >= 200 && res.statusCode < 300);
         res.resume(); // drain the response

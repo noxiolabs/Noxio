@@ -141,11 +141,20 @@ app.whenReady().then(async () => {
   });
 });
 
-// Shut down all services gracefully before the app exits
-app.on('before-quit', async () => {
+// Shut down all services gracefully before the app exits.
+// IMPORTANT: Electron does not await async before-quit handlers — the process
+// exits before stopAll() completes, leaving Ollama orphaned. The correct pattern
+// is to call event.preventDefault(), run cleanup, then call app.exit() explicitly.
+let _quitting = false;
+app.on('before-quit', (event) => {
+  if (_quitting) return; // prevent re-entry when app.exit() triggers another before-quit
+  event.preventDefault();
+  _quitting = true;
   logger.info('Noxio shutting down — stopping background services');
   healthChecker.stopPolling();
-  await processManager.stopAll();
+  processManager.stopAll()
+    .catch((err) => logger.error(`Shutdown error: ${err.message}`))
+    .finally(() => app.exit(0));
 });
 
 // Quit when all windows are closed (except on macOS)
