@@ -103,6 +103,8 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - [ ] Output gallery: display generated images, allow save
 - [ ] VRAM auto-management wired: Chat → Create triggers orchestrator
 - [ ] Test: generate image while chat is loaded → Ollama pauses → image generates → Ollama resumes
+- [ ] **Wizard: model swap dropdown** — ModelsScreen currently only shows the recommended model. Add a dropdown per capability so the user can pick from all compatible models for their VRAM tier. (Spec says "swap option" — not built in Phase 3.)
+- [ ] **Wizard: cloud API key input** — ModelsScreen has no UI for entering cloud provider API keys (OpenAI, Anthropic, Google). The spec calls for this on the Models screen. Deferred to Phase 5 alongside full cloud routing.
 
 ### Phase 6 — Voice Panel (Weeks 11–12)
 
