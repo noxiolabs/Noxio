@@ -157,6 +157,18 @@ app.on('before-quit', (event) => {
     .finally(() => app.exit(0));
 });
 
+// Handle Ctrl+C and kill signals from the terminal (e.g. npm run dev).
+// These bypass Electron's before-quit event entirely — route them through
+// app.quit() so our cleanup handler runs before the process exits.
+process.on('SIGINT', () => {
+  logger.info('Received SIGINT — initiating graceful shutdown');
+  app.quit();
+});
+process.on('SIGTERM', () => {
+  logger.info('Received SIGTERM — initiating graceful shutdown');
+  app.quit();
+});
+
 // Quit when all windows are closed (except on macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
