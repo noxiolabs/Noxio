@@ -14,6 +14,7 @@
 'use strict';
 
 const { spawn, execFile } = require('child_process');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 const logger = require('../utils/logger');
@@ -91,6 +92,12 @@ const _children = {};
 
 /** Intentional stop flags — prevents restart loop after an explicit stopService() */
 const _intentionalStop = {};
+
+/**
+ * Tracks services that were adopted (already running externally) rather than spawned.
+ * These have no _children entry but must still be killed on shutdown.
+ */
+const _adopted = {};
 
 /**
  * Emits a service-status event to the renderer. Safe to call before window is shown.
@@ -317,6 +324,25 @@ function spawnService(name) {
 }
 
 /**
+ * Checks if Ollama is already serving on port 11434 before we try to spawn it.
+ * Returns true if an existing instance is detected, false otherwise.
+ * @returns {Promise<boolean>}
+ */
+function checkOllamaAlreadyRunning() {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: '127.0.0.1', port: 11434, path: '/api/tags', timeout: 5000 },
+      (res) => {
+        resolve(res.statusCode >= 200 && res.statusCode < 300);
+        res.resume(); // drain the response
+      }
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+/**
  * Starts a named background service. Resolves executable paths on first call.
  * @param {string} name - 'ollama' | 'litellm' | 'comfyui' | 'whisper' | 'kokoro'
  * @returns {Promise<void>}
@@ -334,6 +360,18 @@ async function startService(name) {
   emitStatus(name, 'starting');
   serviceStates[name].restartCount = 0;
   _intentionalStop[name] = false;
+
+  // If Ollama is already serving externally, adopt it rather than spawning a second instance.
+  // Mark it as adopted so stopService can kill it on shutdown even without a _children ref.
+  if (name === 'ollama') {
+    const alreadyRunning = await checkOllamaAlreadyRunning();
+    if (alreadyRunning) {
+      logger.info('process-manager: [ollama] detected existing instance on port 11434 — adopting, skipping spawn');
+      _adopted[name] = true;
+      emitStatus(name, 'running');
+      return;
+    }
+  }
 
   // Resolve executable on first start
   if (!SERVICE_CONFIG[name].executable) {
@@ -365,6 +403,23 @@ async function startService(name) {
  */
 async function stopService(name) {
   const child = _children[name];
+
+  // If we adopted an external instance rather than spawning it, we still need to kill
+  // it on shutdown — otherwise the model stays loaded in VRAM after Noxio exits.
+  if (!child && _adopted[name]) {
+    _adopted[name] = false;
+    logger.info(`process-manager: [${name}] killing adopted instance by process name`);
+    await new Promise((resolve) => {
+      if (process.platform === 'win32') {
+        execFile('taskkill', ['/F', '/IM', 'ollama.exe', '/T'], { windowsHide: true }, () => resolve());
+      } else {
+        execFile('pkill', ['-x', 'ollama'], () => resolve());
+      }
+    });
+    emitStatus(name, 'stopped');
+    return;
+  }
+
   if (!child || serviceStates[name].status === 'stopped') {
     logger.info(`process-manager: [${name}] not running — skipping stop`);
     return;
@@ -375,7 +430,13 @@ async function stopService(name) {
   return new Promise((resolve) => {
     const forceKillTimer = setTimeout(() => {
       logger.warn(`process-manager: [${name}] did not exit in 8s — force killing`);
-      try { child.kill(); } catch (_) { /* already dead */ }
+      try {
+        if (process.platform === 'win32' && child.pid) {
+          execFile('taskkill', ['/F', '/T', '/PID', String(child.pid)], { windowsHide: true }, () => {});
+        } else {
+          child.kill();
+        }
+      } catch (_) { /* already dead */ }
       resolve();
     }, 8000);
 
@@ -385,9 +446,26 @@ async function stopService(name) {
     });
 
     try {
-      child.kill('SIGTERM');
+      if (process.platform === 'win32' && child.pid) {
+        // On Windows, child.kill('SIGTERM') only terminates the root process.
+        // Ollama spawns a llama_server child that holds GPU memory — use
+        // taskkill /T to kill the entire process tree so VRAM is freed.
+        execFile(
+          'taskkill',
+          ['/F', '/T', '/PID', String(child.pid)],
+          { windowsHide: true },
+          (err) => {
+            if (err) {
+              logger.warn(`process-manager: [${name}] taskkill /T failed: ${err.message} — falling back to kill()`);
+              try { child.kill(); } catch (_) { /* already dead */ }
+            }
+          }
+        );
+      } else {
+        child.kill('SIGTERM');
+      }
     } catch (err) {
-      logger.warn(`process-manager: [${name}] kill(SIGTERM) failed: ${err.message}`);
+      logger.warn(`process-manager: [${name}] kill failed: ${err.message}`);
       clearTimeout(forceKillTimer);
       resolve();
     }

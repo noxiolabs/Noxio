@@ -172,7 +172,7 @@ renderer/
     middleware/
       ipc-middleware.js       # Syncs Redux actions to/from IPC events
   pages/
-    Setup/                    # 6-screen setup wizard
+    Setup/                    # 7-screen setup wizard
     Chat/                     # Chat panel: streaming, model selector, history
     Create/                   # Create panel: prompt, style presets, gallery
     Voice/                    # Voice panel: push to talk, transcript
@@ -261,8 +261,9 @@ Note: RTX 5080 has 16GB VRAM but display consumes ~989MiB, leaving ~15GB usable.
 
 ---
 
-## Setup Wizard Flow (6 screens)
+## Setup Wizard Flow (7 screens)
 
+0. **PrereqScreen** (added Phase 3.5) — Checks for Ollama, Python, GPU before proceeding. Shows download links if missing. Blocks progress until prerequisites pass.
 1. **Welcome** — name, tagline, Get Started
 2. **Hardware** — GPU name, VRAM, RAM (detector.js runs in background)
 3. **Capabilities** — checkboxes: Chat, Coding, Images, Voice, Agent
@@ -420,6 +421,89 @@ litellm.startLiteLLM({})     // optional — non-fatal failure in Phase 2
 - Uses Node built-in `http` module only (no fetch, no axios)
 - Per-request timeout: 3s
 - `service-status` event emitted only on state transitions, not on every tick
+
+---
+
+## Phase 3 Implementation Notes
+
+Facts that are not derivable from git log and aren't obvious from reading the code. Reference these when debugging or extending Phase 3 modules.
+
+**hardware-scan.js (main/wizard/hardware-scan.js)**
+- Wraps `detector.js` and returns a higher-level capability object: `{ vramTier, canRunChat, canRunImage, canRunVoice, canRunCoding, needsCloud }`
+- `vramTier` maps directly to the tiers in the Model Recommendation Algorithm table (18GB+, 10–18GB, 6–10GB, 3–6GB, <3GB)
+- `needsCloud` is set to `true` only when usable VRAM is below 3GB — signals the wizard to prompt for API keys
+
+**model-recommender.js (main/wizard/model-recommender.js)**
+- Takes a capabilities array and the hardware object from `hardware-scan.js`
+- Returns one recommended model per requested capability based on VRAM tier
+- Model lists are the same as the Model Recommendation Algorithm table in this file — keep them in sync if you update either
+
+**model-downloader.js (main/wizard/model-downloader.js)**
+- Coordinates Ollama pulls for all recommended models sequentially
+- Emits `download-progress` events (`{ model, percent }`) to the renderer for wizard progress display
+- Does not download image models (SafeTensors) — ComfyUI model download is handled separately by installer.js
+
+**installer.js (main/infrastructure/installer.js)**
+- Full installation orchestration: calls model-downloader for LLM models, handles ComfyUI model fetching
+- Emits `install-progress` events (`{ step, percent, message }`) consumed by the InstallingScreen
+- Each install step is wrapped in try/catch — failures emit an error state rather than crashing the process
+
+**Wizard boot flow — `setupComplete` flag**
+- `settings.setupComplete` (Redux `settings` slice, persisted to disk) gates wizard vs. main app
+- On first launch: `setupComplete === false` → `App.jsx` renders the wizard instead of the main app shell
+- On wizard completion (ReadyScreen): `setupComplete` is set to `true` → app re-renders into main shell
+- Never set `setupComplete = true` programmatically before health-checker confirms all required services are up
+
+**PrereqScreen details**
+- Added as Phase 3.5 — not in the original Phase 3 spec
+- Runs before WelcomeScreen (index 0 in wizard flow)
+- Checks: Ollama binary present, Python ≥ 3.10 present, NVIDIA GPU detected
+- If a prerequisite is missing, shows a download/install link and a re-check button — wizard cannot advance until all checks pass
+
+---
+
+## Phase 4 Implementation Notes
+
+Facts that are not derivable from git log and aren't obvious from reading the code. Reference these when debugging or extending Phase 4 modules.
+
+**File ownership (Chat panel)**
+- `renderer/pages/Chat/index.jsx` — top-level panel, owns stream lifecycle and the 60-second timeout
+- `renderer/pages/Chat/ConversationSidebar.jsx` — conversation list, delete action, active state highlight
+- `renderer/pages/Chat/MessageList.jsx` — message feed, auto-scroll on new token
+- `renderer/pages/Chat/MessageBubble.jsx` — Markdown rendering via `react-markdown` + `remark-gfm`; handles code blocks
+- `renderer/pages/Chat/ChatInput.jsx` — text input, disabled while `isStreaming === true`
+- `renderer/pages/Chat/ModelSelector.jsx` — model dropdown, fetches available models from Ollama on mount
+
+**Conversation ID pre-generation**
+- The conversation ID is generated in the component BEFORE the Redux dispatch, not inside the reducer
+- Reason: if the `send-chat-message` IPC call fires before Redux has processed the `createConversation` action, the main process emits `stream-token` events for a conversation ID that the renderer doesn't know about yet
+- Fix: generate ID → dispatch `createConversation(id)` → then invoke IPC with the same ID
+
+**60-second stream timeout (Chat/index.jsx)**
+- After sending a message, a `setTimeout` of 60 000ms is set in `Chat/index.jsx`
+- If `stream-complete` arrives normally, the timeout is cleared
+- If it never arrives (Ollama crash, silent hang), the timeout fires and calls `finaliseStream()` directly
+- Prevents the UI being permanently stuck in streaming state
+
+**Duplicate stream-complete guard (chat.js slice)**
+- `finaliseStream()` in `renderer/store/slices/chat.js` checks `state.isStreaming` before applying changes
+- If `isStreaming` is already `false`, it returns early — no-op
+- This prevents double-finalisation when both the IPC event listener and the 60s timeout fire in close succession
+
+**Auto-title generation**
+- Triggered on `stream-complete` inside `Chat/index.jsx`
+- Title is taken from the first user message in the conversation: first 50 characters, trimmed
+- No LLM call is made for title generation — purely string slicing
+
+**Full conversation history per request**
+- Every `send-chat-message` IPC invocation sends the full `messages[]` array for the active conversation, not just the latest message
+- The main process passes this array directly to Ollama's chat endpoint for LLM context
+- This means large conversations increase request payload size proportionally — no summarisation or windowing in Phase 4
+
+**ModelSelector fetch-once behaviour**
+- `ModelSelector.jsx` calls the `list-models` IPC channel once on component mount (`useEffect` with empty deps array)
+- It does NOT re-fetch when the selected model changes — an earlier version fetched on every model change, causing a re-fetch loop that hammered Ollama
+- To refresh the model list (e.g., after a new pull), the user must navigate away and back, or a manual refresh button must be added
 
 ---
 

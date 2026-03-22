@@ -40,11 +40,13 @@ const chatSlice = createSlice({
     /**
      * Creates a new conversation and sets it as active.
      * @param {Object} [action.payload]
+     * @param {string} [action.payload.id]    - Optional pre-generated ID (caller supplies so it
+     *                                          can be reused for IPC without a second round-trip)
      * @param {string} [action.payload.model] - Model to use for this conversation
      */
     createConversation(state, action) {
       const conversation = {
-        id: nanoid(),
+        id: action.payload?.id || nanoid(),
         title: 'New conversation',
         messages: [],
         model: action.payload?.model || state.selectedModel,

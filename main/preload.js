@@ -50,6 +50,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   switchMode: (mode) => ipcRenderer.invoke('switch-mode', mode),
 
   /**
+   * Checks whether required and recommended prerequisites are installed.
+   * Returns a map of { ok, required, label, note, link } per requirement.
+   * @returns {Promise<Record<string, {ok: boolean, required: boolean, label: string, note: string, link: string|null}>>}
+   */
+  checkPrerequisites: () => ipcRenderer.invoke('check-prerequisites'),
+
+  /**
+   * Returns enriched hardware info for the setup wizard (VRAM tier, capability flags).
+   * @returns {Promise<WizardHardware>}
+   */
+  scanWizardHardware: () => ipcRenderer.invoke('scan-wizard-hardware'),
+
+  /**
    * Returns model recommendations based on selected capabilities and available VRAM.
    * @param {string[]} capabilities - e.g. ['chat', 'coding', 'image', 'voice']
    * @returns {Promise<ModelRecommendationMap>}
@@ -65,15 +78,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startInstallation: (config) => ipcRenderer.invoke('start-installation', config),
 
   /**
-   * Sends a chat message. Response tokens arrive via 'stream-token' events,
-   * completion via 'stream-complete'.
-   * @param {string} message
+   * Returns all locally available Ollama models.
+   * @returns {Promise<Array<{name: string, size: number, modifiedAt: string}>>}
+   */
+  listModels: () => ipcRenderer.invoke('list-models'),
+
+  /**
+   * Sends the full conversation messages array to the LLM. Response tokens
+   * arrive via 'stream-token' events, completion via 'stream-complete'.
+   * @param {Array<{role: string, content: string}>} messages - Full conversation history
    * @param {string} model
    * @param {string} conversationId
    * @returns {Promise<void>}
    */
-  sendChatMessage: (message, model, conversationId) =>
-    ipcRenderer.invoke('send-chat-message', { message, model, conversationId }),
+  sendChatMessage: (messages, model, conversationId) =>
+    ipcRenderer.invoke('send-chat-message', { messages, model, conversationId }),
 
   /**
    * Stops an active streaming response.

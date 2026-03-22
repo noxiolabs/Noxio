@@ -1,37 +1,54 @@
 /**
  * @file model-downloader.js
- * @description Downloads AI models via Ollama CLI (for GGUF LLMs) and
- * HuggingFace CLI (for SafeTensors image/video models). Emits 'download-progress'
- * events to the renderer so the wizard progress bar stays accurate.
+ * @description Downloads AI models via Ollama (for GGUF LLMs). Calls onProgress on each
+ * update so callers can forward progress to the renderer as needed.
  *
  * Model format → backend mapping:
- *   GGUF (LLMs)         → Ollama  (ollama pull <model>)
- *   SafeTensors (FLUX)  → HuggingFace CLI (hf download)
- *   CTranslate2 (Whisper) → HuggingFace CLI
- *   ONNX/PyTorch (Kokoro) → HuggingFace CLI
- *
- * TODO Phase 3: implement download logic with progress streaming.
+ *   GGUF (LLMs)             → Ollama  (ollama pull <model>)
+ *   SafeTensors (FLUX/SDXL) → HuggingFace CLI — Phase 5
+ *   CTranslate2 (Whisper)   → HuggingFace CLI — Phase 6
+ *   ONNX/PyTorch (Kokoro)   → HuggingFace CLI — Phase 6
  */
 
 'use strict';
 
 const logger = require('../utils/logger');
+const ollama = require('../services/ollama');
 
 /**
- * Downloads a model. Routes to Ollama or HuggingFace based on model type.
- * Emits 'download-progress' events via mainWindow.
- * TODO Phase 3: implement.
- *
- * @param {Object} params
- * @param {string} params.model     - Model identifier
- * @param {'ollama'|'huggingface'} params.source
- * @param {import('electron').BrowserWindow} params.mainWindow
+ * Downloads an Ollama model (GGUF), streaming progress via onProgress.
+ * @param {string} model - Model tag e.g. 'qwen2.5:14b'
+ * @param {function({model: string, percent: number, status: string}): void} [onProgress]
  * @returns {Promise<void>}
  */
-async function downloadModel({ model, source, mainWindow }) {
-  logger.info(`model-downloader: downloadModel(${model}, source=${source}) — stub`);
-  mainWindow.webContents.send('download-progress', { model, percent: 100 });
-  // TODO Phase 3: implement real download with progress
+async function downloadOllamaModel(model, onProgress) {
+  logger.info(`model-downloader: pulling "${model}" via Ollama`);
+
+  await ollama.pullModel(model, ({ status, percent }) => {
+    if (onProgress) onProgress({ model, percent, status });
+  });
+
+  if (onProgress) onProgress({ model, percent: 100, status: 'success' });
+}
+
+/**
+ * Downloads a model. Routes to Ollama for GGUF LLMs.
+ * HuggingFace (image/voice models) is deferred to Phase 5/6.
+ *
+ * @param {Object} params
+ * @param {string} params.model - Model identifier
+ * @param {'ollama'|'huggingface'} params.source - Download backend
+ * @param {function({model: string, percent: number, status: string}): void} [params.onProgress]
+ * @returns {Promise<void>}
+ */
+async function downloadModel({ model, source, onProgress }) {
+  if (source === 'ollama') {
+    return downloadOllamaModel(model, onProgress);
+  }
+
+  // HuggingFace (image/voice models) — Phase 5/6
+  logger.warn(`model-downloader: HuggingFace downloads not implemented in v0.1 — skipping "${model}"`);
+  if (onProgress) onProgress({ model, percent: 100, status: 'skipped' });
 }
 
 module.exports = { downloadModel };
