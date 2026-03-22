@@ -430,7 +430,13 @@ async function stopService(name) {
   return new Promise((resolve) => {
     const forceKillTimer = setTimeout(() => {
       logger.warn(`process-manager: [${name}] did not exit in 8s — force killing`);
-      try { child.kill(); } catch (_) { /* already dead */ }
+      try {
+        if (process.platform === 'win32' && child.pid) {
+          execFile('taskkill', ['/F', '/T', '/PID', String(child.pid)], { windowsHide: true }, () => {});
+        } else {
+          child.kill();
+        }
+      } catch (_) { /* already dead */ }
       resolve();
     }, 8000);
 
@@ -440,9 +446,26 @@ async function stopService(name) {
     });
 
     try {
-      child.kill('SIGTERM');
+      if (process.platform === 'win32' && child.pid) {
+        // On Windows, child.kill('SIGTERM') only terminates the root process.
+        // Ollama spawns a llama_server child that holds GPU memory — use
+        // taskkill /T to kill the entire process tree so VRAM is freed.
+        execFile(
+          'taskkill',
+          ['/F', '/T', '/PID', String(child.pid)],
+          { windowsHide: true },
+          (err) => {
+            if (err) {
+              logger.warn(`process-manager: [${name}] taskkill /T failed: ${err.message} — falling back to kill()`);
+              try { child.kill(); } catch (_) { /* already dead */ }
+            }
+          }
+        );
+      } else {
+        child.kill('SIGTERM');
+      }
     } catch (err) {
-      logger.warn(`process-manager: [${name}] kill(SIGTERM) failed: ${err.message}`);
+      logger.warn(`process-manager: [${name}] kill failed: ${err.message}`);
       clearTimeout(forceKillTimer);
       resolve();
     }
