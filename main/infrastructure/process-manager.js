@@ -94,6 +94,12 @@ const _children = {};
 const _intentionalStop = {};
 
 /**
+ * Tracks services that were adopted (already running externally) rather than spawned.
+ * These have no _children entry but must still be killed on shutdown.
+ */
+const _adopted = {};
+
+/**
  * Emits a service-status event to the renderer. Safe to call before window is shown.
  * @param {string} name - Service name
  * @param {string} status
@@ -356,10 +362,12 @@ async function startService(name) {
   _intentionalStop[name] = false;
 
   // If Ollama is already serving externally, adopt it rather than spawning a second instance.
+  // Mark it as adopted so stopService can kill it on shutdown even without a _children ref.
   if (name === 'ollama') {
     const alreadyRunning = await checkOllamaAlreadyRunning();
     if (alreadyRunning) {
       logger.info('process-manager: [ollama] detected existing instance on port 11434 — adopting, skipping spawn');
+      _adopted[name] = true;
       emitStatus(name, 'running');
       return;
     }
@@ -395,6 +403,23 @@ async function startService(name) {
  */
 async function stopService(name) {
   const child = _children[name];
+
+  // If we adopted an external instance rather than spawning it, we still need to kill
+  // it on shutdown — otherwise the model stays loaded in VRAM after Noxio exits.
+  if (!child && _adopted[name]) {
+    _adopted[name] = false;
+    logger.info(`process-manager: [${name}] killing adopted instance by process name`);
+    await new Promise((resolve) => {
+      if (process.platform === 'win32') {
+        execFile('taskkill', ['/F', '/IM', 'ollama.exe', '/T'], { windowsHide: true }, () => resolve());
+      } else {
+        execFile('pkill', ['-x', 'ollama'], () => resolve());
+      }
+    });
+    emitStatus(name, 'stopped');
+    return;
+  }
+
   if (!child || serviceStates[name].status === 'stopped') {
     logger.info(`process-manager: [${name}] not running — skipping stop`);
     return;
