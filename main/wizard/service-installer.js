@@ -216,6 +216,71 @@ async function installComfyUI(installDir, onProgress) {
   return batPath;
 }
 
+// ─── Blackwell PyTorch upgrade ───────────────────────────────────────────────
+
+/**
+ * Upgrades PyTorch inside ComfyUI's python_embeded to a CUDA 12.8 (cu128) build.
+ *
+ * The ComfyUI portable package ships PyTorch compiled for cu126. RTX 5080 and
+ * other Blackwell (sm_100) GPUs require sm_100 kernels which are only present in
+ * the cu128 build — cu126 throws cudaErrorNoKernelImageForDevice at runtime.
+ *
+ * Idempotent: a marker file is written on success so re-runs are instant.
+ *
+ * @param {string} installDir - Root install directory
+ * @param {function(number): void} onProgress - Receives percent 0–100
+ * @returns {Promise<void>}
+ * @throws {Error} If pip install fails
+ */
+async function upgradeTorchForBlackwell(installDir, onProgress) {
+  const comfyPortableDir = path.join(installDir, 'comfyui', 'ComfyUI_windows_portable');
+  const embeddedPython = path.join(comfyPortableDir, 'python_embeded', 'python.exe');
+  const markerPath = path.join(comfyPortableDir, '.torch_cu128_upgraded');
+
+  // Idempotent — skip if already upgraded
+  if (fs.existsSync(markerPath)) {
+    logger.info('service-installer: PyTorch cu128 already upgraded — skipping');
+    onProgress(100);
+    return;
+  }
+
+  if (!fs.existsSync(embeddedPython)) {
+    throw new Error(
+      `service-installer: ComfyUI python_embeded not found at "${embeddedPython}" — run installComfyUI first`
+    );
+  }
+
+  logger.info('service-installer: upgrading PyTorch to cu128 for Blackwell (sm_100) support');
+  onProgress(0);
+
+  await new Promise((resolve, reject) => {
+    execFile(
+      embeddedPython,
+      [
+        '-m', 'pip', 'install',
+        'torch', 'torchvision', 'torchaudio',
+        '--index-url', 'https://download.pytorch.org/whl/cu128',
+        '--upgrade',
+      ],
+      { windowsHide: true, timeout: 900_000 }, // 15 min — PyTorch is ~2.5 GB
+      (err, _stdout, stderr) => {
+        if (err) {
+          reject(new Error(
+            `service-installer: PyTorch cu128 upgrade failed — ${err.message}${stderr ? ` | ${stderr.slice(0, 200)}` : ''}`
+          ));
+        } else {
+          resolve();
+        }
+      }
+    );
+  });
+
+  // Write marker so subsequent runs skip this step
+  fs.writeFileSync(markerPath, new Date().toISOString(), 'utf8');
+  onProgress(100);
+  logger.info('service-installer: PyTorch cu128 upgrade complete');
+}
+
 // ─── Python venv creation ────────────────────────────────────────────────────
 
 /**
@@ -465,6 +530,7 @@ async function downloadKokoroModel(installDir, onProgress) {
 module.exports = {
   resolveSystemPython,
   installComfyUI,
+  upgradeTorchForBlackwell,
   createVenv,
   downloadFluxModel,
   downloadWhisperModel,

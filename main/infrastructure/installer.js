@@ -29,6 +29,7 @@ const store = new Store({ name: 'noxio-settings' });
 const {
   resolveSystemPython,
   installComfyUI,
+  upgradeTorchForBlackwell,
   createVenv,
   downloadFluxModel,
   downloadWhisperModel,
@@ -38,10 +39,11 @@ const {
 // ─── Per-step weight table ────────────────────────────────────────────────────
 // Higher weights = more overall-percent budget allocated to the step.
 const STEP_WEIGHTS = {
-  'install-ollama':        5,
-  'verify-python':         2,
-  'install-comfyui':      12,
-  'install-litellm':       5,
+  'install-ollama':           5,
+  'verify-python':            2,
+  'install-comfyui':         12,
+  'upgrade-torch-blackwell': 15, // ~2.5 GB PyTorch download
+  'install-litellm':          5,
   'install-whisper':       5,
   'install-kokoro':        5,
   'download-flux':        20,
@@ -183,6 +185,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
   activeSteps.push('install-ollama');
   activeSteps.push('verify-python');
   if (hasImage) activeSteps.push('install-comfyui');
+  if (hasImage) activeSteps.push('upgrade-torch-blackwell');
   activeSteps.push('install-litellm');
   if (hasVoice) activeSteps.push('install-whisper');
   if (hasVoice) activeSteps.push('install-kokoro');
@@ -311,6 +314,26 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
     } catch (err) {
       logger.error(`installer: install-comfyui failed — ${err.message}`);
       emitError(win, stepName, `Failed to install ComfyUI: ${err.message}`, true);
+      return { success: false };
+    }
+  }
+
+  // ── Step: upgrade-torch-blackwell ───────────────────────────────────────
+  // Upgrades PyTorch in ComfyUI's python_embeded from cu126 → cu128.
+  // Required for Blackwell (RTX 5080, sm_100) — cu126 lacks sm_100 kernels.
+  // Idempotent (marker file prevents redundant re-downloads).
+  if (hasImage) {
+    const stepName = 'upgrade-torch-blackwell';
+    const { start, end } = ranges[stepName];
+    const stepProgress = makeStepProgress(win, stepName, start, end, 'Upgrading PyTorch for GPU...');
+
+    try {
+      emitProgress(win, stepName, start, 'Upgrading PyTorch to CUDA 12.8 (~2.5 GB)...');
+      await upgradeTorchForBlackwell(installDir, stepProgress);
+      emitProgress(win, stepName, end, 'PyTorch CUDA 12.8 ready ✓');
+    } catch (err) {
+      logger.error(`installer: upgrade-torch-blackwell failed — ${err.message}`);
+      emitError(win, stepName, `Failed to upgrade PyTorch: ${err.message}`, true);
       return { success: false };
     }
   }
