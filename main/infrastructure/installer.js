@@ -21,6 +21,8 @@
 const logger = require('../utils/logger');
 const { downloadModel } = require('../wizard/model-downloader');
 const { isOllamaInstalled, installOllama } = require('../wizard/ollama-installer');
+const ollama = require('../services/ollama');
+const processManager = require('./process-manager');
 const {
   resolveSystemPython,
   installComfyUI,
@@ -203,6 +205,37 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
       logger.error(`installer: install-ollama failed — ${err.message}`);
       emitError(win, stepName, `Failed to install Ollama: ${err.message}`, true);
       return { success: false };
+    }
+  }
+
+  // ── Ensure Ollama HTTP API is running before model downloads ────────────
+  // Ollama may be installed but not yet running (e.g. first launch after install,
+  // or the user has it installed but hasn't started it). We must have the API up
+  // before any ollama pull calls, otherwise they fail with ECONNREFUSED.
+  {
+    const isRunning = await ollama.checkRunning();
+    if (!isRunning) {
+      emitProgress(win, 'install-ollama', ranges['install-ollama'].end, 'Starting Ollama...');
+      try {
+        await processManager.startService('ollama');
+        // Poll up to 30s for the HTTP API to come up
+        const deadline = Date.now() + 30_000;
+        let up = false;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 1_000));
+          up = await ollama.checkRunning();
+          if (up) break;
+        }
+        if (!up) {
+          emitError(win, 'install-ollama', 'Ollama was installed but could not be started. Please start Ollama manually and retry.', true);
+          return { success: false };
+        }
+        logger.info('installer: Ollama is now running');
+      } catch (err) {
+        logger.error(`installer: failed to start Ollama — ${err.message}`);
+        emitError(win, 'install-ollama', `Could not start Ollama: ${err.message}`, true);
+        return { success: false };
+      }
     }
   }
 
@@ -398,12 +431,32 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
   }
 
   // ── Steps: download-llm-{cap} ────────────────────────────────────────────
+  // Fetch the list of already-pulled models once before looping.
+  // This lets us skip pulls for models the user already has, even if they were
+  // pulled outside of Noxio (e.g. via the Ollama CLI directly).
+  let pulledModels = [];
+  try {
+    const listed = await ollama.listModels();
+    pulledModels = listed.map((m) => m.name);
+  } catch (_) { /* non-fatal — proceed and let the pull succeed or fail naturally */ }
+
   for (const cap of llmCaps) {
     const stepName = `download-llm-${cap}`;
     const { start, end } = ranges[stepName];
     const model = models[cap];
 
     try {
+      // Check if already present (exact tag match or same base name without tag)
+      const alreadyPulled = pulledModels.some(
+        (m) => m === model || m.startsWith(model.split(':')[0] + ':')
+      );
+
+      if (alreadyPulled) {
+        logger.info(`installer: model "${model}" already pulled — skipping`);
+        emitProgress(win, stepName, end, `${model} already available ✓`);
+        continue;
+      }
+
       emitProgress(win, stepName, start, `Downloading ${model}...`);
       await downloadModel({
         model,
