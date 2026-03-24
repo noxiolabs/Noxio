@@ -31,6 +31,7 @@ const logger = require('../utils/logger');
 const { detectHardware } = require('../infrastructure/detector');
 const processManager = require('../infrastructure/process-manager');
 const ollama = require('../services/ollama');
+const { isOllamaInstalled } = require('../wizard/ollama-installer');
 const orchestrator = require('../infrastructure/orchestrator');
 const { scanHardware } = require('../wizard/hardware-scan');
 const { recommend } = require('../wizard/model-recommender');
@@ -126,8 +127,14 @@ function registerHandlers(mainWindow) {
   ipcMain.handle('check-prerequisites', async () => {
     logger.info('IPC: check-prerequisites');
 
-    // ── Ollama (required) ─────────────────────────────────────────────────
-    const ollamaRunning = await ollama.checkRunning();
+    // ── Ollama ────────────────────────────────────────────────────────────
+    // Check both binary presence and whether the HTTP API is reachable.
+    // Installed-but-not-running is different from not-installed-at-all.
+    const [ollamaRunning, ollamaInstallResult] = await Promise.all([
+      ollama.checkRunning(),
+      isOllamaInstalled(),
+    ]);
+    const ollamaInstalled = ollamaInstallResult.installed;
 
     // ── Python (recommended — needed for LiteLLM/Whisper/Kokoro) ─────────
     const pythonOk = (await commandExists('python', ['--version']))
@@ -144,10 +151,14 @@ function registerHandlers(mainWindow) {
 
     return {
       ollama: {
-        ok: ollamaRunning,
+        ok: ollamaRunning || ollamaInstalled,
         required: false,
         label: 'Ollama',
-        note: ollamaRunning ? 'Running on port 11434' : 'Not installed — will be installed automatically',
+        note: ollamaRunning
+          ? 'Running on port 11434'
+          : ollamaInstalled
+            ? 'Installed — will be started automatically'
+            : 'Not installed — will be installed automatically',
         link: null,
       },
       python: {

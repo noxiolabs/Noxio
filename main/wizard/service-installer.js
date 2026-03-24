@@ -40,48 +40,37 @@ const FLUX_MIN_SIZE_BYTES = 9_000_000_000;
  * @throws {Error} If no suitable Python is found
  */
 async function resolveSystemPython() {
+  // Ask Python itself for its version and executable path.
+  // This is more reliable than PowerShell Get-Command which can resolve
+  // to the WindowsApps stub even when a real Python is first on PATH.
   for (const candidate of ['python', 'python3']) {
     try {
-      // Resolve to full path, skipping WindowsApps stubs
-      const fullPath = await new Promise((resolve, reject) => {
+      const output = await new Promise((resolve, reject) => {
         execFile(
-          'powershell.exe',
-          [
-            '-NoProfile',
-            '-NonInteractive',
-            '-Command',
-            `(Get-Command ${candidate} -ErrorAction SilentlyContinue)?.Source`,
-          ],
+          candidate,
+          ['-c', 'import sys; print(sys.version_info[0], sys.version_info[1]); print(sys.executable)'],
           { windowsHide: true, timeout: 5_000 },
           (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
         );
       });
 
-      if (!fullPath || fullPath.includes('WindowsApps')) {
+      // Output is two lines: "3 14\nC:\...\python.exe"
+      const lines = output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      if (lines.length < 2) continue;
+
+      const [major, minor] = lines[0].split(' ').map(Number);
+      const exePath = lines[1];
+
+      if (!exePath || exePath.includes('WindowsApps')) {
+        logger.info(`service-installer: skipping WindowsApps Python stub at "${exePath}"`);
         continue;
       }
 
-      // Verify version >= 3.11
-      const versionOutput = await new Promise((resolve, reject) => {
-        execFile(
-          fullPath,
-          ['-c', 'import sys; print(list(sys.version_info[:2]))'],
-          { windowsHide: true, timeout: 5_000 },
-          (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
-        );
-      });
-
-      // Output will be like "[3, 11]" or "[3, 12]"
-      const match = versionOutput.match(/\[(\d+),\s*(\d+)\]/);
-      if (match) {
-        const major = parseInt(match[1], 10);
-        const minor = parseInt(match[2], 10);
-        if (major > 3 || (major === 3 && minor >= 11)) {
-          logger.info(`service-installer: found Python ${major}.${minor} at "${fullPath}"`);
-          return fullPath;
-        }
-        logger.info(`service-installer: Python at "${fullPath}" is ${major}.${minor} — need 3.11+`);
+      if (major > 3 || (major === 3 && minor >= 11)) {
+        logger.info(`service-installer: found Python ${major}.${minor} at "${exePath}"`);
+        return exePath;
       }
+      logger.info(`service-installer: Python at "${exePath}" is ${major}.${minor} — need 3.11+`);
     } catch (_) {
       // Candidate not available — try next
     }
