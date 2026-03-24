@@ -21,7 +21,7 @@ const ALL_CAPABILITIES = [
     default: true,
   },
   {
-    id: 'images',
+    id: 'image',
     label: 'Images',
     description: 'Generate images with FLUX.1 or SDXL via ComfyUI.',
     requiresImage: true,
