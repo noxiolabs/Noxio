@@ -21,10 +21,14 @@ const fs = require('fs');
 const https = require('https');
 const os = require('os');
 const path = require('path');
+const sevenBin = require('7zip-bin');
+const { extractFull } = require('node-7z');
 const logger = require('../utils/logger');
 
+// cu128 (CUDA 12.8) doesn't ship yet — cu126 is the newest variant and works
+// on Blackwell (RTX 5080) via CUDA's backwards-compatibility guarantees.
 const COMFYUI_ZIP_URL =
-  'https://github.com/comfyanonymous/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia_cu128.zip';
+  'https://github.com/Comfy-Org/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia_cu126.7z';
 
 const FLUX_MODEL_URL =
   'https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors';
@@ -156,7 +160,7 @@ function downloadFileWithProgress(url, destPath, onProgress) {
  */
 async function installComfyUI(installDir, onProgress) {
   const comfyDir = path.join(installDir, 'comfyui');
-  const zipPath = path.join(comfyDir, 'comfyui-portable.zip');
+  const archivePath = path.join(comfyDir, 'comfyui-portable.7z');
   const batPath = path.join(comfyDir, 'ComfyUI_windows_portable', 'run_nvidia_gpu.bat');
 
   // Idempotent — skip if already extracted
@@ -168,36 +172,27 @@ async function installComfyUI(installDir, onProgress) {
 
   fs.mkdirSync(comfyDir, { recursive: true });
 
-  logger.info(`service-installer: downloading ComfyUI to "${zipPath}"`);
+  logger.info(`service-installer: downloading ComfyUI to "${archivePath}"`);
   onProgress(0);
 
   // Download occupies 0–70% of the step
-  await downloadFileWithProgress(COMFYUI_ZIP_URL, zipPath, (pct) => {
+  await downloadFileWithProgress(COMFYUI_ZIP_URL, archivePath, (pct) => {
     onProgress(Math.floor(pct * 0.7));
   });
 
   onProgress(70);
-  logger.info('service-installer: extracting ComfyUI zip via PowerShell');
+  logger.info('service-installer: extracting ComfyUI .7z archive via 7zip-bin');
 
-  // Extract via PowerShell Expand-Archive
+  // Extract via bundled 7z binary — Expand-Archive doesn't support .7z
   await new Promise((resolve, reject) => {
-    execFile(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        `Expand-Archive -Path "${zipPath}" -DestinationPath "${comfyDir}" -Force`,
-      ],
-      { windowsHide: true, timeout: 120_000 },
-      (err, _stdout, stderr) => {
-        if (err) {
-          reject(new Error(`service-installer: extraction failed — ${err.message}${stderr ? ` | ${stderr}` : ''}`));
-        } else {
-          resolve();
-        }
-      }
-    );
+    const stream = extractFull(archivePath, comfyDir, {
+      $bin: sevenBin.path7za,
+      $progress: false,
+    });
+    stream.on('end', resolve);
+    stream.on('error', (err) => {
+      reject(new Error(`service-installer: extraction failed — ${err.message}`));
+    });
   });
 
   onProgress(90);
@@ -209,9 +204,9 @@ async function installComfyUI(installDir, onProgress) {
     );
   }
 
-  // Clean up zip
+  // Clean up archive
   try {
-    fs.unlinkSync(zipPath);
+    fs.unlinkSync(archivePath);
   } catch (_) {
     // Non-fatal — extra disk usage but not a blocker
   }
