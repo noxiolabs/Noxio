@@ -415,37 +415,53 @@ print("DONE")
 }
 
 /**
- * Downloads the Kokoro TTS model into the kokoro venv's cache.
- * Executes a bootstrap script inside the venv so the model is fetched via
- * kokoro-onnx's own download mechanism.
+ * Downloads the Kokoro TTS ONNX model and voices file directly from GitHub releases.
+ * kokoro-onnx takes explicit model_path and voices_path constructor args — it has no
+ * built-in download mechanism. The two required files are:
+ *   - kokoro-v1.0.onnx   (~335 MB)
+ *   - voices-v1.0.bin    (~73 MB)
+ *
+ * URLs sourced from the package's own config.py error messages.
  *
  * @param {string} installDir - Root install directory
  * @param {function(number): void} onProgress - Receives percent 0–100
  * @returns {Promise<void>}
- * @throws {Error} If the venv is missing or the download script fails
+ * @throws {Error} On download failure
  */
 async function downloadKokoroModel(installDir, onProgress) {
-  const venvPython = path.join(installDir, 'venvs', 'kokoro', 'Scripts', 'python.exe');
+  const KOKORO_BASE = 'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0';
+  const modelsDir = path.join(installDir, 'venvs', 'kokoro', 'models');
+  fs.mkdirSync(modelsDir, { recursive: true });
 
-  if (!fs.existsSync(venvPython)) {
-    throw new Error(
-      'service-installer: kokoro venv not found — run createVenv for kokoro first'
-    );
+  const files = [
+    { name: 'kokoro-v1.0.onnx', minBytes: 300_000_000 },
+    { name: 'voices-v1.0.bin',  minBytes: 50_000_000  },
+  ];
+
+  for (let i = 0; i < files.length; i++) {
+    const { name, minBytes } = files[i];
+    const destPath = path.join(modelsDir, name);
+    const partPath = destPath + '.part';
+    const rangeStart = Math.round((i / files.length) * 100);
+    const rangeEnd   = Math.round(((i + 1) / files.length) * 100);
+
+    if (fs.existsSync(destPath)) {
+      try {
+        if (fs.statSync(destPath).size > minBytes) {
+          logger.info(`service-installer: Kokoro file "${name}" already downloaded — skipping`);
+          onProgress(rangeEnd);
+          continue;
+        }
+      } catch (_) { /* fall through */ }
+    }
+
+    logger.info(`service-installer: downloading Kokoro file "${name}"`);
+    await downloadFileWithProgress(`${KOKORO_BASE}/${name}`, partPath, (pct) => {
+      onProgress(Math.round(rangeStart + (pct / 100) * (rangeEnd - rangeStart)));
+    });
+    fs.renameSync(partPath, destPath);
+    logger.info(`service-installer: Kokoro file "${name}" ready`);
   }
-
-  const downloadRoot = path.join(installDir, 'venvs', 'kokoro', 'models');
-  fs.mkdirSync(downloadRoot, { recursive: true });
-
-  onProgress(0);
-  logger.info('service-installer: downloading Kokoro model');
-
-  const script = `from kokoro_onnx import Kokoro
-import sys
-Kokoro.from_pretrained(download_dir=sys.argv[1])
-print("DONE")
-`;
-
-  await runPythonDownloadScript(venvPython, script, [downloadRoot], 300_000);
 
   onProgress(100);
   logger.info('service-installer: Kokoro model ready');
