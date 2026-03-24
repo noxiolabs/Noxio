@@ -23,6 +23,7 @@ const CAP_LABELS = {
  *   onModels: (models: Object) => void,
  *   onNext: () => void,
  *   onBack: () => void,
+ *   installDir: string|null,
  * }} props
  */
 export default function ModelsScreen({
@@ -32,6 +33,7 @@ export default function ModelsScreen({
   onModels,
   onNext,
   onBack,
+  installDir = null,
 }) {
   const [recs, setRecs] = useState(recommendations);
   const [loading, setLoading] = useState(!recommendations);
@@ -126,6 +128,17 @@ export default function ModelsScreen({
         )}
       </div>
 
+      {installDir ? (
+        <p className="text-xs text-zinc-500 text-center">
+          Files will be stored in:{' '}
+          <span className="text-zinc-400 font-mono">{installDir}</span>
+        </p>
+      ) : (
+        <p className="text-xs text-red-400 text-center">
+          No install location selected — go back and choose one.
+        </p>
+      )}
+
       <div className="flex gap-3">
         <button
           onClick={onBack}
@@ -135,7 +148,7 @@ export default function ModelsScreen({
         </button>
         <button
           onClick={onNext}
-          disabled={downloadableCount === 0}
+          disabled={downloadableCount === 0 || installDir === null}
           className="px-8 py-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition-colors"
         >
           Download & Install →

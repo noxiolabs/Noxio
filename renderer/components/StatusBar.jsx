@@ -8,17 +8,21 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 
 const STATUS_COLOR = {
-  running:  'bg-green-500',
-  starting: 'bg-yellow-400 animate-pulse',
-  stopped:  'bg-zinc-600',
-  error:    'bg-red-500',
+  running:        'bg-green-500',
+  starting:       'bg-yellow-400 animate-pulse',
+  stopped:        'bg-zinc-600',
+  error:          'bg-red-500',
+  'not-installed':'bg-zinc-700',
 };
 
 /** Single service health indicator dot. */
 function HealthDot({ name, status }) {
   const color = STATUS_COLOR[status] ?? STATUS_COLOR.stopped;
+  const title = status === 'not-installed'
+    ? `${name}: Not installed`
+    : `${name}: ${status}`;
   return (
-    <div className="flex items-center gap-1.5" title={`${name}: ${status}`}>
+    <div className="flex items-center gap-1.5" title={title}>
       <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color}`} />
       <span className="text-zinc-600 text-[10px] capitalize">{name}</span>
     </div>

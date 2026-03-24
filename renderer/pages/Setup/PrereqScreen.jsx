@@ -3,8 +3,8 @@
  * @description Setup wizard — Screen 1. Checks that required and recommended
  * prerequisites are installed before proceeding. Shows a status row for each:
  *
- *   • Ollama        — REQUIRED. Wizard cannot proceed until it is running.
- *   • Python 3.11+  — Recommended. Needed for LiteLLM, Whisper, Kokoro.
+ *   • Ollama        — Optional. Will be installed automatically if missing.
+ *   • Python 3.11+  — Required when image or voice capabilities are selected.
  *   • NVIDIA GPU    — Informational. Local AI needs a GPU.
  *
  * Users can install missing items, then hit Retry without restarting Noxio.
@@ -85,9 +85,9 @@ function PrereqRow({ label, note, state, link, required }) {
 }
 
 /**
- * @param {{ onNext: () => void }} props
+ * @param {{ onNext: () => void, selectedCapabilities: string[] }} props
  */
-export default function PrereqScreen({ onNext }) {
+export default function PrereqScreen({ onNext, selectedCapabilities = [] }) {
   const [results, setResults]   = useState(null);
   const [checking, setChecking] = useState(true);
 
@@ -104,12 +104,16 @@ export default function PrereqScreen({ onNext }) {
 
   useEffect(() => { runCheck(); }, [runCheck]);
 
-  const canProceed = results?.ollama?.ok === true;
+  const needsPython = selectedCapabilities.some((c) => ['image', 'voice'].includes(c));
+  const pythonOk    = !results || results.python?.ok === true;
+  const canProceed  = !checking && (!needsPython || pythonOk);
 
   const rowState = (key) => {
     if (checking || !results) return 'checking';
     const r = results[key];
+    if (!r) return 'warn';
     if (r.ok) return 'ok';
+    if (key === 'ollama') return 'warn';
     return r.required ? 'error' : 'warn';
   };
 
@@ -125,10 +129,16 @@ export default function PrereqScreen({ onNext }) {
       <div className="w-full max-w-sm space-y-2">
         <PrereqRow
           label={results?.ollama?.label ?? 'Ollama'}
-          note={checking ? 'Checking…' : (results?.ollama?.note ?? '')}
+          note={
+            checking
+              ? 'Checking…'
+              : results?.ollama?.ok
+              ? (results.ollama.note ?? 'Found')
+              : 'Not installed — will be installed automatically'
+          }
           state={rowState('ollama')}
-          link={results?.ollama?.link}
-          required
+          link={null}
+          required={false}
         />
         <PrereqRow
           label={results?.python?.label ?? 'Python 3.11+'}
@@ -145,10 +155,10 @@ export default function PrereqScreen({ onNext }) {
           required={false}
         />
 
-        {!checking && !canProceed && (
+        {!checking && !canProceed && needsPython && !pythonOk && (
           <p className="text-xs text-red-400 text-center pt-1">
-            Ollama must be running to continue.
-            Install it, start it, then click Retry.
+            Python 3.11 or later is required for image and voice capabilities.
+            Download and install it, then click Retry.
           </p>
         )}
       </div>
@@ -163,7 +173,7 @@ export default function PrereqScreen({ onNext }) {
         </button>
         <button
           onClick={onNext}
-          disabled={!canProceed || checking}
+          disabled={!canProceed}
           className="px-8 py-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-medium transition-colors"
         >
           Continue →

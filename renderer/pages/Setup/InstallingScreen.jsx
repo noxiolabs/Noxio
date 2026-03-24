@@ -1,85 +1,188 @@
 /**
  * @file InstallingScreen.jsx
- * @description Setup wizard — Screen 5. Triggers the installation via IPC and
- * displays a progress bar with step messages streamed from 'install-progress' events.
- * Advances to the next screen automatically on completion.
+ * @description Setup wizard — Screen 6. Triggers installation via IPC and displays
+ * a step-by-step progress list driven by 'install-progress' and 'install-error' events.
+ * Supports retry on retryable errors and pre-marks already-installed steps as done.
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import StepRow from './StepRow';
+
+const STEP_DEFS = [
+  { step: 'install-ollama',         label: 'Installing Ollama',         always: true },
+  { step: 'verify-python',          label: 'Verifying Python',          always: true },
+  { step: 'install-comfyui',        label: 'Installing ComfyUI',        cap: 'image' },
+  { step: 'install-litellm',        label: 'Installing LiteLLM',        always: true },
+  { step: 'install-whisper',        label: 'Installing Whisper',        cap: 'voice' },
+  { step: 'install-kokoro',         label: 'Installing Kokoro',         cap: 'voice' },
+  { step: 'download-flux',          label: 'Downloading image model',   cap: 'image' },
+  { step: 'download-whisper-model', label: 'Downloading Whisper model', cap: 'voice' },
+  { step: 'download-kokoro-model',  label: 'Downloading Kokoro model',  cap: 'voice' },
+  { step: 'download-llm',           label: 'Downloading AI models',     always: true },
+];
+
+/**
+ * Returns steps applicable for the given capabilities.
+ * @param {string[]} capabilities
+ */
+function buildSteps(capabilities) {
+  return STEP_DEFS.filter((def) => def.always || (def.cap && capabilities.includes(def.cap)));
+}
+
+/**
+ * Maps an incoming event step string to a known step key.
+ * 'download-llm-*' variants map to 'download-llm'.
+ * @param {string} eventStep
+ * @param {{ step: string }[]} stepList
+ * @returns {string|null}
+ */
+function resolveStepKey(eventStep, stepList) {
+  const direct = stepList.find((s) => s.step === eventStep);
+  if (direct) return direct.step;
+  const prefix = stepList.find((s) => eventStep.startsWith(s.step));
+  return prefix ? prefix.step : null;
+}
 
 /**
  * @param {{
  *   capabilities: string[],
  *   models: Object,
+ *   installDir: string,
+ *   installedServices: Object,
  *   onDone: () => void,
  * }} props
  */
-export default function InstallingScreen({ capabilities, models, onDone }) {
-  const [progress, setProgress] = useState(0);
-  const [message, setMessage] = useState('Starting...');
-  const [error, setError] = useState(null);
-  const started = useRef(false);
+export default function InstallingScreen({ capabilities, models, installDir, installedServices, onDone }) {
+  const steps = buildSteps(capabilities);
+
+  function buildInitialStatuses() {
+    const map = {};
+    steps.forEach(({ step }) => {
+      const serviceKey = step.replace('install-', '');
+      map[step] = installedServices?.[serviceKey] === true ? 'done' : 'pending';
+    });
+    return map;
+  }
+
+  const [progress, setProgress]         = useState(0);
+  const [stepMsg, setStepMsg]           = useState({});
+  const [statuses, setStatuses]         = useState(buildInitialStatuses);
+  const [installError, setInstallError] = useState(null);
+  const started                         = useRef(false);
+
+  const startInstallation = useCallback(() => {
+    window.electronAPI
+      .startInstallation({ capabilities, models, installDir, installedServices })
+      .catch((err) => {
+        setInstallError({ message: err.message ?? 'Installation failed', retryable: true });
+      });
+  }, [capabilities, models, installDir, installedServices]);
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
 
     function handleProgress({ step, percent, message: msg }) {
-      setProgress(percent);
-      setMessage(msg);
+      setProgress(percent ?? 0);
       if (step === 'complete') {
+        setStatuses((prev) => {
+          const next = { ...prev };
+          Object.keys(next).forEach((k) => { if (next[k] !== 'error') next[k] = 'done'; });
+          return next;
+        });
         setTimeout(onDone, 900);
+        return;
       }
-      if (step === 'error') {
-        setError(msg);
+      const key = resolveStepKey(step, steps);
+      setStatuses((prev) => {
+        const next = { ...prev };
+        let found = false;
+        steps.forEach(({ step: s }) => {
+          if (found) return;
+          if (s === key) { found = true; next[s] = 'in-progress'; return; }
+          if (next[s] !== 'error') next[s] = 'done';
+        });
+        return next;
+      });
+      if (key) setStepMsg((prev) => ({ ...prev, [key]: msg ?? '' }));
+    }
+
+    function handleError({ step, message: msg, retryable }) {
+      const key = resolveStepKey(step ?? '', steps);
+      if (key) {
+        setStatuses((prev) => ({ ...prev, [key]: 'error' }));
+        setStepMsg((prev) => ({ ...prev, [key]: msg ?? '' }));
       }
+      setInstallError({ message: msg ?? 'An error occurred during installation.', retryable: !!retryable });
     }
 
     window.electronAPI.on('install-progress', handleProgress);
-
-    window.electronAPI.startInstallation({ capabilities, models }).catch((err) => {
-      setError(err.message ?? 'Installation failed');
-    });
+    window.electronAPI.on('install-error', handleError);
+    startInstallation();
 
     return () => {
       window.electronAPI.off('install-progress', handleProgress);
+      window.electronAPI.off('install-error', handleError);
     };
-  }, [capabilities, models, onDone]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-6 px-8 text-center">
-        <div className="text-3xl text-yellow-500">⚠</div>
-        <div className="space-y-1">
-          <p className="text-white font-medium">Installation failed</p>
-          <p className="text-zinc-500 text-sm">{error}</p>
-        </div>
-        <p className="text-xs text-zinc-600 max-w-xs">
-          Make sure Ollama is installed and running, then restart Noxio to try again.
-        </p>
-      </div>
-    );
+  function handleRetry() {
+    setInstallError(null);
+    setStatuses(buildInitialStatuses());
+    setProgress(0);
+    setStepMsg({});
+    started.current = true;
+    startInstallation();
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-8 px-8 text-center">
-      <div className="space-y-1">
+    <div className="flex flex-col items-center justify-center h-full gap-6 px-8">
+      <div className="text-center">
         <h2 className="text-2xl font-semibold text-white">Setting things up</h2>
-        <p className="text-zinc-500 text-sm">This may take a while depending on your connection.</p>
+        <p className="text-zinc-500 text-sm mt-1">This may take a while depending on your connection.</p>
       </div>
 
-      <div className="w-full max-w-sm space-y-4">
+      <div className="w-full max-w-sm space-y-2">
         <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
           <div
             className="h-full bg-violet-600 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${progress}%` }}
           />
         </div>
-        <p className="text-sm text-zinc-400">{message}</p>
-        <p className="text-xs text-zinc-600">{progress}% complete</p>
+        <p className="text-xs text-zinc-600 text-right tabular-nums">{progress}%</p>
       </div>
 
-      <div className="w-5 h-5 border-2 border-violet-600/40 border-t-violet-600 rounded-full animate-spin" />
+      <div className="w-full max-w-sm divide-y divide-zinc-800/60">
+        {steps.map(({ step, label }) => (
+          <StepRow
+            key={step}
+            label={label}
+            status={statuses[step] ?? 'pending'}
+            message={stepMsg[step] ?? ''}
+          />
+        ))}
+      </div>
+
+      {installError && (
+        <div className="w-full max-w-sm rounded-lg border border-red-800/40 bg-red-900/10 p-4 space-y-3">
+          <p className="text-sm text-red-400">{installError.message}</p>
+          {installError.retryable ? (
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"
+            >
+              Retry
+            </button>
+          ) : (
+            <p className="text-xs text-zinc-500">Fix the issue externally, then restart Noxio to try again.</p>
+          )}
+        </div>
+      )}
+
+      {!installError && (
+        <div className="w-5 h-5 border-2 border-violet-600/40 border-t-violet-600 rounded-full animate-spin" />
+      )}
     </div>
   );
 }
