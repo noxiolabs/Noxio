@@ -29,6 +29,7 @@ const logger = require('../utils/logger');
 const { detectHardware } = require('../infrastructure/detector');
 const processManager = require('../infrastructure/process-manager');
 const ollama = require('../services/ollama');
+const orchestrator = require('../infrastructure/orchestrator');
 const { scanHardware } = require('../wizard/hardware-scan');
 const { recommend } = require('../wizard/model-recommender');
 const { runInstallation } = require('../infrastructure/installer');
@@ -85,18 +86,27 @@ function registerHandlers(mainWindow) {
   // ─── Mode Switching ──────────────────────────────────────────────────────
 
   /**
-   * Switches the active workload mode. Triggers VRAM orchestration as needed.
+   * Switches the active workload mode. Triggers VRAM orchestration via orchestrator.js.
    * Emits 'mode-ready' event back to renderer when the switch is complete.
-   * TODO Phase 5: wire to main/infrastructure/orchestrator.js
+   * Non-fatal: on failure, still emits 'mode-ready' so the UI doesn't hang.
+   * Phase 5.
+   * @param {{ targetMode: string, currentMode: string }} payload
    */
-  ipcMain.handle('switch-mode', async (_event, mode) => {
-    logger.info(`IPC: switch-mode → ${mode} (stub)`);
+  ipcMain.handle('switch-mode', async (_event, { targetMode, currentMode } = {}) => {
+    logger.info(`IPC: switch-mode ${currentMode} → ${targetMode}`);
     const validModes = ['chat', 'create', 'voice', 'agent', 'gaming'];
-    if (!validModes.includes(mode)) {
-      throw new Error(`Invalid mode: ${mode}`);
+    if (!validModes.includes(targetMode)) {
+      logger.warn(`IPC: switch-mode — invalid targetMode "${targetMode}"`);
+      mainWindow.webContents.send('mode-ready', targetMode ?? 'chat');
+      return;
     }
-    // Stub: immediately report mode as ready
-    mainWindow.webContents.send('mode-ready', mode);
+    try {
+      await orchestrator.switchMode(targetMode, currentMode ?? 'chat', mainWindow);
+    } catch (err) {
+      // switchMode is already non-fatal internally, but guard here as a final safety net
+      logger.error(`IPC: switch-mode failed — ${err.message}\n${err.stack}`);
+      mainWindow.webContents.send('mode-ready', targetMode);
+    }
   });
 
   // ─── Setup Wizard ────────────────────────────────────────────────────────
@@ -245,14 +255,46 @@ function registerHandlers(mainWindow) {
   // ─── Image Generation ────────────────────────────────────────────────────
 
   /**
-   * Triggers image generation via ComfyUI.
-   * TODO Phase 5: wire to main/services/comfyui.js
+   * Triggers image generation via ComfyUI with VRAM-aware service switching.
+   * Pauses Ollama, generates the image, then resumes Ollama.
+   * Progress events are emitted as 'image-progress' with percent 0–100.
+   * Phase 5.
+   *
+   * @param {{ prompt: string, style: string, quality: string }} payload
+   * @returns {Promise<{ imagePath: string }|{ error: string }>}
    */
   ipcMain.handle('generate-image', async (_event, { prompt, style, quality }) => {
-    logger.info(`IPC: generate-image (stub) — style: ${style}, quality: ${quality}, prompt: "${prompt}"`);
-    // Return an explicit not-implemented error so callers can handle it gracefully
-    // rather than receiving a misleading install-progress event.
-    return { error: 'Image generation is not yet available — coming in Phase 5' };
+    logger.info(`IPC: generate-image — style: ${style}, quality: ${quality}, prompt: "${prompt?.slice(0, 80)}"`);
+
+    if (!prompt || !prompt.trim()) {
+      return { error: 'Prompt is required for image generation' };
+    }
+
+    const validStyles = ['photorealistic', 'artistic', 'abstract', 'anime'];
+    const validQualities = ['draft', 'standard', 'high'];
+
+    const safeStyle = validStyles.includes(style) ? style : 'photorealistic';
+    const safeQuality = validQualities.includes(quality) ? quality : 'standard';
+
+    try {
+      const onProgress = (percent) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('image-progress', percent);
+        }
+      };
+
+      const imageDataUrl = await orchestrator.generateImageWithVRAMSwap(
+        prompt.trim(),
+        safeStyle,
+        safeQuality,
+        onProgress
+      );
+
+      return { imagePath: imageDataUrl };
+    } catch (err) {
+      logger.error(`IPC: generate-image failed — ${err.message}\n${err.stack}`);
+      return { error: err.message };
+    }
   });
 
   // ─── Voice ───────────────────────────────────────────────────────────────
@@ -275,7 +317,7 @@ function registerHandlers(mainWindow) {
     return '[Voice transcription stub — wire up Phase 6]';
   });
 
-  logger.info('IPC handlers registered (Phase 4)');
+  logger.info('IPC handlers registered (Phase 5)');
 }
 
 module.exports = { registerHandlers };

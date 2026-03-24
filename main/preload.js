@@ -24,6 +24,7 @@ const VALID_RECEIVE_CHANNELS = [
   'mode-ready',        // mode: string
   'vram-update',       // { usedGB: number, availableGB: number }
   'download-progress', // { model: string, percent: number }
+  'image-progress',    // percent: number (0–100) — emitted during image generation
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -43,11 +44,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /**
    * Switches the active mode (chat | create | voice | agent | gaming).
+   * Triggers VRAM orchestration in the main process.
    * Result arrives via 'mode-ready' event.
-   * @param {string} mode
+   * @param {string} targetMode - Mode to switch to
+   * @param {string} currentMode - Currently active mode (needed for VRAM decisions)
    * @returns {Promise<void>}
    */
-  switchMode: (mode) => ipcRenderer.invoke('switch-mode', mode),
+  switchMode: (targetMode, currentMode) =>
+    ipcRenderer.invoke('switch-mode', { targetMode, currentMode }),
 
   /**
    * Checks whether required and recommended prerequisites are installed.
