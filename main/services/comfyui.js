@@ -43,7 +43,9 @@ const MAX_POLL_ATTEMPTS = 300;
  * @param {number} cfg - CFG scale (classifier-free guidance)
  * @returns {Object} ComfyUI workflow object
  */
-function buildFluxWorkflow(prompt, steps, cfg) {
+function buildFluxWorkflow(prompt, steps) {
+  // FLUX.1-schnell is timestep-distilled — CFG must be 1.0.
+  // Higher values break generation and crash the ComfyUI execution worker.
   return {
     '1': {
       class_type: 'CheckpointLoaderSimple',
@@ -70,7 +72,7 @@ function buildFluxWorkflow(prompt, steps, cfg) {
         latent_image: ['4', 0],
         seed: Math.floor(Math.random() * 2 ** 32),
         steps,
-        cfg,
+        cfg: 1.0,
         sampler_name: 'euler',
         scheduler: 'simple',
         denoise: 1.0,
@@ -173,12 +175,11 @@ function buildWorkflow(prompt, style, quality) {
 
   switch (style) {
     case 'photorealistic':
-      return buildFluxWorkflow(prompt, steps, 3.5);
+      return buildFluxWorkflow(prompt, steps);
     case 'artistic':
       return buildFluxWorkflow(
         `artistic interpretation, painterly, ${prompt}`,
-        steps,
-        7.0
+        steps
       );
     case 'abstract':
       return buildSdxlWorkflow(
@@ -395,6 +396,15 @@ async function generateImage({ prompt, style, quality, onProgress }) {
       const jobEntry = historyData[promptId];
 
       if (jobEntry && jobEntry.status && jobEntry.status.completed) {
+        // ComfyUI sets completed=true for both success and error.
+        // Check status_str so we surface errors immediately instead of
+        // falling through to "no images found in outputs".
+        if (jobEntry.status.status_str === 'error') {
+          const errMsg = jobEntry.status.messages
+            ?.find((m) => m[0] === 'execution_error')?.[1]?.exception_message
+            ?? 'unknown ComfyUI execution error';
+          throw new Error(`ComfyUI job failed: ${errMsg}`);
+        }
         history = jobEntry;
         break;
       }

@@ -421,11 +421,15 @@ async function startService(name) {
   // Check persisted path first — set by installer via setPersistedPaths()
   if (!SERVICE_CONFIG[name].executable && _servicePaths[name]) {
     if (name === 'comfyui') {
-      // .bat files cannot be spawned directly without shell:true.
-      // Run via cmd.exe /c so we keep shell:false on the actual spawn call.
-      SERVICE_CONFIG[name].executable = 'cmd.exe';
-      SERVICE_CONFIG[name].args = ['/c', _servicePaths[name]];
-      SERVICE_CONFIG[name].cwd = path.dirname(_servicePaths[name]);
+      // Bypass the bat launcher and run python_embeded directly so we can pass
+      // --disable-auto-launch (the bat uses --windows-standalone-build which
+      // opens a browser window on startup, which we don't want).
+      const comfyDir = path.dirname(_servicePaths[name]);
+      const embeddedPython = path.join(comfyDir, 'python_embeded', 'python.exe');
+      const mainScript = path.join(comfyDir, 'ComfyUI', 'main.py');
+      SERVICE_CONFIG[name].executable = embeddedPython;
+      SERVICE_CONFIG[name].args = ['-s', mainScript, '--windows-standalone-build', '--disable-auto-launch'];
+      SERVICE_CONFIG[name].cwd = comfyDir;
     } else {
       SERVICE_CONFIG[name].executable = _servicePaths[name];
     }
