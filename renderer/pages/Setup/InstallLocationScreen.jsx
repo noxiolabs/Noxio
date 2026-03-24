@@ -82,7 +82,7 @@ export default function InstallLocationScreen({ onNext, onBack, selectedCapabili
         window.electronAPI.getAvailableDrives(),
       ]);
       if (cancelled) return;
-      const dir = defaultDir ?? '';
+      const dir = defaultDir?.dir ?? '';
       setPathValue(dir);
       setDrives(drivesResult ?? []);
       if (dir) validate(dir);

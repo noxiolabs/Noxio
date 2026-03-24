@@ -413,10 +413,14 @@ async function startService(name) {
 
   // Check persisted path first — set by installer via setPersistedPaths()
   if (!SERVICE_CONFIG[name].executable && _servicePaths[name]) {
-    SERVICE_CONFIG[name].executable = _servicePaths[name];
-    // For ComfyUI .bat launcher, the cwd must be the bat's directory
     if (name === 'comfyui') {
+      // .bat files cannot be spawned directly without shell:true.
+      // Run via cmd.exe /c so we keep shell:false on the actual spawn call.
+      SERVICE_CONFIG[name].executable = 'cmd.exe';
+      SERVICE_CONFIG[name].args = ['/c', _servicePaths[name]];
       SERVICE_CONFIG[name].cwd = path.dirname(_servicePaths[name]);
+    } else {
+      SERVICE_CONFIG[name].executable = _servicePaths[name];
     }
     logger.info(`process-manager: [${name}] using persisted path "${_servicePaths[name]}"`);
   }
