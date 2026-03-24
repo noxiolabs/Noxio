@@ -59,7 +59,12 @@ const SERVICE_CONFIG = {
     executable: null,
     args: ['--config', null, '--port', '4000'],
     cwd: null,
-    env: {},
+    env: {
+      // Force UTF-8 stdout so LiteLLM's Unicode banner doesn't crash on
+      // Windows systems where the default console codepage is cp1252.
+      PYTHONUTF8: '1',
+      PYTHONIOENCODING: 'utf-8',
+    },
     maxRestarts: 5,
     restartDelayBaseMs: 1000,
   },

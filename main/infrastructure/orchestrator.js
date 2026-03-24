@@ -60,6 +60,11 @@ function waitForService(name, timeoutMs = SERVICE_READY_TIMEOUT_MS) {
         return;
       }
 
+      if (status === 'not-installed') {
+        reject(new Error(`Service "${name}" is not installed — skipping wait`));
+        return;
+      }
+
       if (Date.now() >= deadline) {
         reject(new Error(`Timed out waiting for service "${name}" to become running`));
         return;
