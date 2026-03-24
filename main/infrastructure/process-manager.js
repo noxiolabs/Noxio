@@ -389,7 +389,9 @@ async function startService(name) {
 
   // Non-Ollama services require successful installation before they can be started.
   // Ollama is managed separately (adopt-or-spawn) so this check doesn't apply to it.
-  if (name !== 'ollama' && _installedServices[name] === false) {
+  // Treat both explicit false AND missing/undefined as not-installed — undefined means the
+  // wizard was never run for that capability, or the service was never selected.
+  if (name !== 'ollama' && !_installedServices[name] && !_servicePaths[name]) {
     logger.info(`process-manager: [${name}] not installed — emitting not-installed`);
     emitStatus(name, 'not-installed');
     return;
