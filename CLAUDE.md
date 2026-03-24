@@ -507,6 +507,82 @@ Facts that are not derivable from git log and aren't obvious from reading the co
 
 ---
 
+## Real Installer Implementation Notes
+
+Facts that are not derivable from git log and aren't obvious from reading the code. Reference these when debugging or extending the installer modules.
+
+**Service install directory layout (service-installer.js)**
+- All Python-based services are installed under a single `installDir` root chosen by the user during the wizard
+- ComfyUI lands at `{installDir}/comfyui/ComfyUI_windows_portable/` after zip extraction
+- Python venvs are at `{installDir}/venvs/{service}/` — one venv per service (litellm, whisper, kokoro)
+- The venv python executable is always at `{installDir}/venvs/{service}/Scripts/python.exe`
+- The LiteLLM CLI entry point is at `{installDir}/venvs/litellm/Scripts/litellm.exe`
+- Whisper models are downloaded into `{installDir}/venvs/whisper/models/`
+- Kokoro models are downloaded into `{installDir}/venvs/kokoro/models/`
+- The FLUX model lands at `{installDir}/comfyui/ComfyUI_windows_portable/ComfyUI/models/checkpoints/flux1-schnell-fp8.safetensors`
+
+**ComfyUI launch method (process-manager.js)**
+- ComfyUI is launched by running `run_nvidia_gpu.bat` directly — not via Python
+- The `cwd` for the spawn call must be set to the directory containing `run_nvidia_gpu.bat`, not to `installDir` or any parent — the .bat relies on relative paths internally
+- When process-manager loads a persisted ComfyUI path, it automatically sets `SERVICE_CONFIG.comfyui.cwd = path.dirname(batPath)`
+
+**Per-service pip packages (service-installer.js / installer.js)**
+- LiteLLM venv: `litellm[proxy]`
+- Whisper venv: `faster-whisper`
+- Kokoro venv: `kokoro-onnx`, `soundfile`
+- All packages are installed with `pip install --upgrade` so re-runs bring packages up to date without recreating the venv
+
+**Python minimum version and WindowsApps rejection (service-installer.js)**
+- Required minimum: Python 3.11+ — 3.10 (used in Phase 3 PrereqScreen) is not sufficient for the real installer
+- Windows App Store Python stubs (path contains `WindowsApps`) are explicitly rejected — they silently fail when used as a real interpreter
+- Path resolution uses PowerShell `Get-Command` rather than `where` to get the fully-resolved path before rejection check
+
+**`not-installed` service status (process-manager.js)**
+- If `_installedServices[name] === false` when `startService()` is called, the service emits status `not-installed` and returns immediately without spawning
+- This prevents crash loops for services the user did not select during setup
+- Ollama is exempt from this check — it uses adopt-or-spawn logic regardless of the installed flag
+
+**electron-store key and persisted settings fields (main/index.js, renderer/store/slices/settings.js)**
+- Store name: `noxio-settings` — results in `noxio-settings.json` in Electron's userData directory
+- Fields read at startup from the store: `settings.setupComplete`, `settings.servicePaths`, `settings.installedServices`, `settings.installDir`
+- `servicePaths` maps service name → absolute path to the service's launch executable (bat for ComfyUI, python.exe for Whisper/Kokoro, litellm.exe for LiteLLM)
+- `installedServices` maps service name → boolean; gates whether a service will be started or emit `not-installed`
+
+**`setPersistedPaths()` call requirement (main/index.js)**
+- Must be called before any `startService()` call — it populates `_servicePaths` and `_installedServices` inside process-manager
+- In `main/index.js`, the call order is: `processManager.init(win)` → `processManager.setPersistedPaths(...)` → `processManager.startService('ollama')`
+- If `setPersistedPaths` is not called, process-manager falls back to dynamic PATH resolution, which will fail for venv-installed services like Whisper and Kokoro
+
+**Confirmed download URLs (ollama-installer.js, service-installer.js)**
+- Ollama installer: `https://ollama.com/download/OllamaSetup.exe` — uses NSIS `/S` flag for silent unattended install
+- ComfyUI portable zip: `https://github.com/comfyanonymous/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia_cu128.zip` — the `cu128` variant is required for CUDA 12.8 (RTX 5080 / Blackwell)
+- FLUX.1-schnell fp8 model: `https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors` — minimum expected size is 9 GB; files smaller than this are treated as corrupt and re-downloaded
+
+**`.part` file pattern for large downloads (service-installer.js)**
+- The FLUX model is downloaded to `{destPath}.part` and atomically renamed to the final path on completion
+- This prevents a partially-downloaded file from being mistaken for a complete one if the app crashes mid-download
+- The idempotency check (skip if file exists and size > 9 GB) only looks at the final path, not the `.part` path — a stale `.part` file will be overwritten on retry
+
+**Whisper and Kokoro model download method (service-installer.js)**
+- Models are NOT downloaded via direct HTTP — they are fetched by running a small temporary Python script inside the respective service venv
+- The script is written to `os.tmpdir()` as `noxio-dl-{timestamp}.py`, executed via the venv's `python.exe`, then deleted
+- For Whisper: instantiates `faster_whisper.WhisperModel("medium", ...)` which triggers the library's own HuggingFace download; model lands in the `download_root` argument path
+- For Kokoro: calls `kokoro_onnx.Kokoro.from_pretrained(download_dir=...)` which fetches via the library's own mechanism
+- Timeout for each model download script: 300 seconds (5 minutes)
+
+**Ollama installer post-install poll (ollama-installer.js)**
+- After the silent installer exits, the module polls `GET http://127.0.0.1:11434/api/tags` every 1 second for up to 15 seconds before declaring failure
+- The installer .exe is downloaded to `os.tmpdir()` as `noxio-ollama-setup-{timestamp}.exe` and deleted in a `finally` block regardless of success or failure
+- Download progress callbacks fire only when percent increases by ≥ 2 to reduce IPC chatter; same throttle is used for ComfyUI zip and FLUX model downloads
+
+**installer.js step-weight system (main/infrastructure/installer.js)**
+- Each install step has a weight that determines its share of the 0–100 overall progress bar
+- LLM model downloads each get 20 weight points; FLUX model download gets 20; ComfyUI zip gets 12
+- Steps not needed for the user's selected capabilities are excluded from the active step list and their weights are not counted, so the progress bar always reaches 100% regardless of capability selection
+- LiteLLM installation failure is non-fatal — the wizard continues even if `install-litellm` fails, because chat/coding can still work without LiteLLM in Phase 2
+
+---
+
 ## Development Rhythm
 
 - **Monday** — Review week plan, create feature branches
