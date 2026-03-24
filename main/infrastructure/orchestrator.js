@@ -24,6 +24,7 @@
 
 const logger = require('../utils/logger');
 const processManager = require('./process-manager');
+const healthChecker = require('./health-checker');
 const comfyui = require('../services/comfyui');
 
 /** Timeout in ms for waiting on a service to become healthy after starting */
@@ -47,21 +48,26 @@ function waitForService(name, timeoutMs = SERVICE_READY_TIMEOUT_MS) {
     const deadline = Date.now() + timeoutMs;
 
     function poll() {
-      const states = processManager.getServiceStates();
-      const status = states[name]?.status;
+      const pmStatus = processManager.getServiceStates()[name]?.status;
 
-      if (status === 'running') {
-        resolve();
-        return;
-      }
-
-      if (status === 'crashed') {
+      // Fast-fail on process-level terminal states
+      if (pmStatus === 'crashed') {
         reject(new Error(`Service "${name}" crashed while waiting for it to start`));
         return;
       }
 
-      if (status === 'not-installed') {
+      if (pmStatus === 'not-installed') {
         reject(new Error(`Service "${name}" is not installed — skipping wait`));
+        return;
+      }
+
+      // Use health-checker's HTTP-based status for the running check.
+      // Process-manager marks a service 'running' as soon as it spawns, but
+      // ComfyUI (and others) need extra time to open their HTTP port.
+      // Health-checker only sets 'running' after a real HTTP 200 response.
+      const httpStatus = healthChecker.getHealthStates()[name];
+      if (httpStatus === 'running') {
+        resolve();
         return;
       }
 
