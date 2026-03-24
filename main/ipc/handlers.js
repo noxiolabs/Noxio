@@ -406,6 +406,20 @@ function registerHandlers(mainWindow) {
   });
 
   /**
+   * Marks setup as complete. Writes setupComplete=true to electron-store so the app
+   * skips the wizard on next launch. Called by ReadyScreen when the user clicks "Open Noxio".
+   * @returns {Promise<void>}
+   */
+  ipcMain.handle('complete-setup', () => {
+    try {
+      logger.info('IPC: complete-setup');
+      store.set('settings.setupComplete', true);
+    } catch (err) {
+      logger.error(`IPC: complete-setup failed — ${err.message}`);
+    }
+  });
+
+  /**
    * Returns resume data for a partially completed installation.
    * Reads installed services, service paths, and install directory from electron-store.
    * @returns {{installedServices: Object, servicePaths: Object, installDir: string|null}}

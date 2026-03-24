@@ -117,6 +117,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkInstallResume: () => ipcRenderer.invoke('check-install-resume'),
 
   /**
+   * Marks setup as complete in electron-store so the wizard is skipped on next launch.
+   * Must be called by ReadyScreen before dispatching completeSetup() to Redux.
+   * @returns {Promise<void>}
+   */
+  completeSetup: () => ipcRenderer.invoke('complete-setup'),
+
+  /**
    * Returns all locally available Ollama models.
    * @returns {Promise<Array<{name: string, size: number, modifiedAt: string}>>}
    */

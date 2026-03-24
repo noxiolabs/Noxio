@@ -23,6 +23,9 @@ const { downloadModel } = require('../wizard/model-downloader');
 const { isOllamaInstalled, installOllama } = require('../wizard/ollama-installer');
 const ollama = require('../services/ollama');
 const processManager = require('./process-manager');
+const Store = require('electron-store');
+
+const store = new Store({ name: 'noxio-settings' });
 const {
   resolveSystemPython,
   installComfyUI,
@@ -131,6 +134,25 @@ function computeStepRanges(activeSteps, weights) {
   return ranges;
 }
 
+// ─── Persistence helper ───────────────────────────────────────────────────────
+
+/**
+ * Writes a completed service to electron-store and keeps process-manager in sync
+ * for the current session so that the orchestrator can start the service immediately
+ * after installation without waiting for an app restart.
+ *
+ * @param {string} service - Service key (e.g. 'comfyui', 'litellm')
+ * @param {string|null} execPath - Executable or venv python path; null for Ollama
+ */
+function persistServiceComplete(service, execPath) {
+  if (execPath) store.set(`settings.servicePaths.${service}`, execPath);
+  store.set(`settings.installedServices.${service}`, true);
+  // Refresh process-manager's runtime maps so it uses the new path immediately
+  const updatedPaths     = store.get('settings.servicePaths', {});
+  const updatedInstalled = store.get('settings.installedServices', {});
+  processManager.setPersistedPaths(updatedPaths, updatedInstalled);
+}
+
 // ─── Main orchestrator ────────────────────────────────────────────────────────
 
 /**
@@ -146,6 +168,9 @@ function computeStepRanges(activeSteps, weights) {
  */
 async function runInstallation({ capabilities = [], models = {}, installDir, installedServices = {}, mainWindow: win }) {
   logger.info('installer: starting full installation', { capabilities, installDir });
+
+  // Persist the chosen install directory immediately so it survives a crash/retry
+  store.set('settings.installDir', installDir);
 
   const hasImage = capabilities.includes('image');
   const hasVoice = capabilities.includes('voice');
@@ -200,6 +225,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
           emitProgress(win, stepName, end, 'Ollama installed ✓');
         }
         emitServiceComplete(win, 'ollama', null);
+        persistServiceComplete('ollama', null);
       }
     } catch (err) {
       logger.error(`installer: install-ollama failed — ${err.message}`);
@@ -280,6 +306,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         const batPath = await installComfyUI(installDir, stepProgress);
         emitProgress(win, stepName, end, 'ComfyUI installed ✓');
         emitServiceComplete(win, 'comfyui', batPath);
+        persistServiceComplete('comfyui', batPath);
       }
     } catch (err) {
       logger.error(`installer: install-comfyui failed — ${err.message}`);
@@ -313,6 +340,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         const litellmExe = require('path').join(installDir, 'venvs', 'litellm', 'Scripts', 'litellm.exe');
         emitProgress(win, stepName, end, 'LiteLLM installed ✓');
         emitServiceComplete(win, 'litellm', litellmExe);
+        persistServiceComplete('litellm', litellmExe);
       }
     } catch (err) {
       logger.error(`installer: install-litellm failed — ${err.message}`);
@@ -342,6 +370,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         });
         emitProgress(win, stepName, end, 'Whisper installed ✓');
         emitServiceComplete(win, 'whisper', venvPython);
+        persistServiceComplete('whisper', venvPython);
       }
     } catch (err) {
       logger.error(`installer: install-whisper failed — ${err.message}`);
@@ -371,6 +400,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         });
         emitProgress(win, stepName, end, 'Kokoro installed ✓');
         emitServiceComplete(win, 'kokoro', venvPython);
+        persistServiceComplete('kokoro', venvPython);
       }
     } catch (err) {
       logger.error(`installer: install-kokoro failed — ${err.message}`);

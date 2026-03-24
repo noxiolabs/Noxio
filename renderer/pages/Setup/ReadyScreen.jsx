@@ -42,6 +42,13 @@ function ServiceList() {
 export default function ReadyScreen() {
   const dispatch = useDispatch();
 
+  async function handleOpen() {
+    // Persist setupComplete to electron-store first so the app skips the wizard on next launch.
+    // Then update Redux so App.jsx switches to the main shell in this session.
+    await window.electronAPI.completeSetup();
+    dispatch(completeSetup());
+  }
+
   return (
     <div className="flex flex-col items-center justify-center h-full gap-8 text-center px-8">
       <div className="space-y-3">
@@ -53,7 +60,7 @@ export default function ReadyScreen() {
       <ServiceList />
 
       <button
-        onClick={() => dispatch(completeSetup())}
+        onClick={handleOpen}
         className="px-10 py-3 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors"
       >
         Open Noxio →
