@@ -182,15 +182,19 @@ function buildWorkflow(prompt, style, quality) {
         steps
       );
     case 'abstract':
-      return buildSdxlWorkflow(
-        `abstract art, surreal, ${prompt}, geometric shapes, bold colors`,
-        steps,
-        false
+      // SDXL not installed — route through FLUX with style-weighted prompt
+      return buildFluxWorkflow(
+        `abstract art, surreal, geometric shapes, bold colors, ${prompt}`,
+        steps
       );
     case 'anime':
-      return buildSdxlWorkflow(prompt, steps, true);
+      // SDXL not installed — route through FLUX with anime prompt modifier
+      return buildFluxWorkflow(
+        `anime style, vibrant colors, detailed linework, ${prompt}`,
+        steps
+      );
     default:
-      return buildFluxWorkflow(prompt, steps, 3.5);
+      return buildFluxWorkflow(prompt, steps);
   }
 }
 
