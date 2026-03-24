@@ -9,7 +9,7 @@ import React from 'react';
 
 const MODES = [
   { id: 'chat',   label: 'Chat',   Icon: ChatIcon   },
-  { id: 'create', label: 'Create', Icon: CreateIcon, disabled: true },
+  { id: 'create', label: 'Create', Icon: CreateIcon },
   { id: 'voice',  label: 'Voice',  Icon: VoiceIcon,  disabled: true },
   { id: 'agent',  label: 'Agent',  Icon: AgentIcon,  disabled: true },
 ];

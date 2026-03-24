@@ -17,6 +17,7 @@ import SetupWizard from './pages/Setup';
 import Sidebar from './components/Sidebar';
 import StatusBar from './components/StatusBar';
 import ChatPanel from './pages/Chat';
+import CreatePanel from './pages/Create';
 import ErrorBoundary from './components/ErrorBoundary';
 
 /** Placeholder shown for panels not yet implemented. */
@@ -33,6 +34,23 @@ export default function App() {
   const dispatch = useDispatch();
   const setupComplete = useSelector((s) => s.settings.setupComplete);
   const [activeMode, setActiveMode] = useState('chat');
+
+  /**
+   * Handles a mode change from the Sidebar. Invokes the IPC switch-mode channel
+   * so the main process can handle VRAM orchestration before the UI switches over.
+   * The mode-ready event (handled by ipc-middleware → setCurrentMode) confirms the
+   * switch completed on the backend. We update the UI immediately for responsiveness —
+   * the StatusBar health dots will surface any backend issues.
+   *
+   * @param {string} newMode
+   */
+  function handleModeChange(newMode) {
+    if (newMode === activeMode) return;
+    if (window.electronAPI) {
+      window.electronAPI.switchMode(newMode, activeMode);
+    }
+    setActiveMode(newMode);
+  }
 
   useEffect(() => {
     async function init() {
@@ -68,11 +86,11 @@ export default function App() {
     <ErrorBoundary>
       <div className="flex flex-col h-screen bg-[#0f0f11] text-zinc-100 overflow-hidden">
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar activeMode={activeMode} onModeChange={setActiveMode} />
+          <Sidebar activeMode={activeMode} onModeChange={handleModeChange} />
 
           <main className="flex-1 overflow-hidden">
             {activeMode === 'chat'   && <ChatPanel />}
-            {activeMode === 'create' && <ComingSoon label="Create" />}
+            {activeMode === 'create' && <CreatePanel />}
             {activeMode === 'voice'  && <ComingSoon label="Voice" />}
             {activeMode === 'agent'  && <ComingSoon label="Agent" />}
           </main>
