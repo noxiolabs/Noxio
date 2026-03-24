@@ -23,8 +23,10 @@
 
 'use strict';
 
-const { ipcMain } = require('electron');
+const { ipcMain, app, dialog } = require('electron');
 const { execFile } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const logger = require('../utils/logger');
 const { detectHardware } = require('../infrastructure/detector');
 const processManager = require('../infrastructure/process-manager');
@@ -33,6 +35,10 @@ const orchestrator = require('../infrastructure/orchestrator');
 const { scanHardware } = require('../wizard/hardware-scan');
 const { recommend } = require('../wizard/model-recommender');
 const { runInstallation } = require('../infrastructure/installer');
+
+// electron-store — persists settings across app restarts
+const Store = require('electron-store');
+const store = new Store({ name: 'noxio-settings' });
 
 /**
  * Checks if a command is available on PATH by attempting to run it.
@@ -139,10 +145,10 @@ function registerHandlers(mainWindow) {
     return {
       ollama: {
         ok: ollamaRunning,
-        required: true,
+        required: false,
         label: 'Ollama',
-        note: ollamaRunning ? 'Running on port 11434' : 'Not detected — download and start Ollama',
-        link: 'https://ollama.com/download',
+        note: ollamaRunning ? 'Running on port 11434' : 'Not installed — will be installed automatically',
+        link: null,
       },
       python: {
         ok: pythonOk,
@@ -192,16 +198,218 @@ function registerHandlers(mainWindow) {
   });
 
   /**
-   * Starts the installation sequence for selected services and models.
-   * Emits 'install-progress' events during installation.
-   * Wired to installer.js + model-downloader.js — Phase 3.
+   * Starts the full installation sequence for selected services and models.
+   * Accepts installDir in the payload. Passes installedServices from electron-store
+   * so already-completed steps are skipped on resume.
+   * Emits 'install-progress', 'install-error', and 'install-service-complete' events.
+   * Phase real-installer.
+   *
+   * @param {{ capabilities: string[], models: Object, installDir: string }} config
+   * @returns {Promise<{success: boolean}>}
    */
   ipcMain.handle('start-installation', async (_event, config) => {
     try {
       logger.info('IPC: start-installation', config);
-      await runInstallation(config, mainWindow);
+      const installedServices = store.get('settings.installedServices', {});
+      return await runInstallation({
+        capabilities: config.capabilities,
+        models: config.models,
+        installDir: config.installDir,
+        installedServices,
+        mainWindow,
+      });
     } catch (err) {
       logger.error(`IPC: start-installation failed — ${err.message}\n${err.stack}`);
+      return { success: false };
+    }
+  });
+
+  // ─── Install directory helpers ────────────────────────────────────────────
+
+  /**
+   * Returns available filesystem drives with size information.
+   * Uses PowerShell Get-PSDrive to enumerate FileSystem providers.
+   * Filters out zero-size drives (virtual/network drives with no reported size).
+   * @returns {Promise<Array<{letter: string, label: string, totalGB: number, freeGB: number}>>}
+   */
+  ipcMain.handle('get-available-drives', async () => {
+    try {
+      logger.info('IPC: get-available-drives');
+      const raw = await new Promise((resolve, reject) => {
+        execFile(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            'Get-PSDrive -PSProvider FileSystem | Select-Object Name,Description,Used,Free | ConvertTo-Json',
+          ],
+          { windowsHide: true, timeout: 10_000 },
+          (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
+        );
+      });
+
+      /** @type {Array<{Name: string, Description: string, Used: number, Free: number}>} */
+      const parsed = JSON.parse(raw);
+      const drives = Array.isArray(parsed) ? parsed : [parsed];
+
+      return drives
+        .filter((d) => (d.Used || 0) + (d.Free || 0) > 0)
+        .map((d) => ({
+          letter: d.Name,
+          label: d.Description || d.Name,
+          totalGB: Math.round(((d.Used || 0) + (d.Free || 0)) / 1024 / 1024 / 1024),
+          freeGB: Math.round((d.Free || 0) / 1024 / 1024 / 1024),
+        }));
+    } catch (err) {
+      logger.error(`IPC: get-available-drives failed — ${err.message}`);
+      return [];
+    }
+  });
+
+  /**
+   * Validates that a chosen install directory is writable and has enough free space (25 GB).
+   * @param {{ dir: string }} payload
+   * @returns {Promise<{ok: boolean, reason: string|null, freeGB: number}>}
+   */
+  ipcMain.handle('validate-install-dir', async (_event, { dir }) => {
+    try {
+      logger.info(`IPC: validate-install-dir "${dir}"`);
+
+      // 1. Ensure directory can be created/accessed
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+      } catch (err) {
+        return { ok: false, reason: `Cannot create directory: ${err.message}`, freeGB: 0 };
+      }
+
+      // 2. Verify write permission via a temp file
+      const testFile = path.join(dir, `noxio-write-test-${Date.now()}.tmp`);
+      try {
+        fs.writeFileSync(testFile, 'noxio-write-test');
+        fs.unlinkSync(testFile);
+      } catch (err) {
+        return { ok: false, reason: `Directory is not writable: ${err.message}`, freeGB: 0 };
+      }
+
+      // 3. Check free space
+      const driveLetter = path.parse(dir).root.replace('\\', '').replace(':', '');
+      let freeBytes = 0;
+      try {
+        const freeRaw = await new Promise((resolve, reject) => {
+          execFile(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-Command',
+              `(Get-PSDrive ${driveLetter} -ErrorAction SilentlyContinue).Free`,
+            ],
+            { windowsHide: true, timeout: 5_000 },
+            (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
+          );
+        });
+        freeBytes = parseInt(freeRaw, 10) || 0;
+      } catch (_) {
+        // Can't determine free space — be permissive
+        return { ok: true, reason: null, freeGB: 0 };
+      }
+
+      const freeGB = Math.round(freeBytes / 1024 / 1024 / 1024);
+      const REQUIRED_BYTES = 25 * 1024 * 1024 * 1024;
+
+      if (freeBytes < REQUIRED_BYTES) {
+        return {
+          ok: false,
+          reason: `Insufficient disk space: ${freeGB} GB free, 25 GB required`,
+          freeGB,
+        };
+      }
+
+      return { ok: true, reason: null, freeGB };
+    } catch (err) {
+      logger.error(`IPC: validate-install-dir failed — ${err.message}`);
+      return { ok: false, reason: err.message, freeGB: 0 };
+    }
+  });
+
+  /**
+   * Returns the recommended default install directory.
+   * Prefers E:\Noxio if E: exists and has >= 30 GB free; otherwise uses %LOCALAPPDATA%\Noxio.
+   * @returns {Promise<{dir: string}>}
+   */
+  ipcMain.handle('get-default-install-dir', async () => {
+    try {
+      logger.info('IPC: get-default-install-dir');
+
+      // Check if E: drive exists and has >= 30 GB free
+      let eFreeBytes = 0;
+      try {
+        const freeRaw = await new Promise((resolve, reject) => {
+          execFile(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-Command',
+              '(Get-PSDrive E -ErrorAction SilentlyContinue).Free',
+            ],
+            { windowsHide: true, timeout: 5_000 },
+            (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
+          );
+        });
+        eFreeBytes = parseInt(freeRaw, 10) || 0;
+      } catch (_) {
+        eFreeBytes = 0;
+      }
+
+      const PREFERRED_MIN_BYTES = 30 * 1024 * 1024 * 1024;
+      if (eFreeBytes >= PREFERRED_MIN_BYTES) {
+        return { dir: 'E:\\Noxio' };
+      }
+
+      return { dir: path.join(app.getPath('appData'), '..', 'Local', 'Noxio') };
+    } catch (err) {
+      logger.error(`IPC: get-default-install-dir failed — ${err.message}`);
+      return { dir: path.join(app.getPath('appData'), '..', 'Local', 'Noxio') };
+    }
+  });
+
+  /**
+   * Opens a native OS folder picker dialog so the user can choose the install directory.
+   * @returns {Promise<{dir: string|null}>}
+   */
+  ipcMain.handle('pick-install-directory', async () => {
+    try {
+      logger.info('IPC: pick-install-directory');
+      const result = await dialog.showOpenDialog({
+        properties: ['openDirectory', 'createDirectory'],
+        title: 'Choose Noxio install location',
+        buttonLabel: 'Select Folder',
+      });
+      return { dir: result.filePaths[0] ?? null };
+    } catch (err) {
+      logger.error(`IPC: pick-install-directory failed — ${err.message}`);
+      return { dir: null };
+    }
+  });
+
+  /**
+   * Returns resume data for a partially completed installation.
+   * Reads installed services, service paths, and install directory from electron-store.
+   * @returns {{installedServices: Object, servicePaths: Object, installDir: string|null}}
+   */
+  ipcMain.handle('check-install-resume', () => {
+    try {
+      logger.info('IPC: check-install-resume');
+      return {
+        installedServices: store.get('settings.installedServices', {}),
+        servicePaths: store.get('settings.servicePaths', {}),
+        installDir: store.get('settings.installDir', null),
+      };
+    } catch (err) {
+      logger.error(`IPC: check-install-resume failed — ${err.message}`);
+      return { installedServices: {}, servicePaths: {}, installDir: null };
     }
   });
 

@@ -28,6 +28,10 @@ const { detectHardware } = require('./infrastructure/detector');
 const litellm = require('./services/litellm');
 const logger = require('./utils/logger');
 
+// electron-store — read setup state and persisted service paths at startup
+const Store = require('electron-store');
+const store = new Store({ name: 'noxio-settings' });
+
 const isDev = process.env.NODE_ENV === 'development';
 
 /** @type {BrowserWindow|null} */
@@ -84,13 +88,19 @@ function createWindow() {
 }
 
 /**
- * Starts all Phase 2 background services. Called after the window is created.
- * Ollama is required; LiteLLM is optional and its failure does not block startup.
+ * Starts all background services. Called after the window is created.
+ * Services are only started if setup is complete — during the wizard, service startup
+ * is deferred until the wizard completes and the user has chosen their install location.
  * @param {BrowserWindow} win
  */
 async function startBackgroundServices(win) {
   // Wire process manager to the window so it can push status events
   processManager.init(win);
+
+  // Load persisted service paths and installed flags so process-manager uses correct executables
+  const servicePaths = store.get('settings.servicePaths', {});
+  const installedServices = store.get('settings.installedServices', {});
+  processManager.setPersistedPaths(servicePaths, installedServices);
 
   // Start health polling — runs every 5s, emits service-status + vram-update
   healthChecker.startPolling(win);
@@ -107,18 +117,30 @@ async function startBackgroundServices(win) {
     logger.warn(`Startup hardware detection failed — ${err.message}`);
   }
 
-  // Start Ollama — core service, must be running for any chat functionality
-  try {
-    await processManager.startService('ollama');
-  } catch (err) {
-    logger.error(`Failed to start Ollama: ${err.message}`);
-  }
+  const setupComplete = store.get('settings.setupComplete', false);
 
-  // Start LiteLLM — optional in Phase 2; direct Ollama access used for chat
-  try {
-    await litellm.startLiteLLM({});
-  } catch (err) {
-    logger.warn(`LiteLLM failed to start (optional in Phase 2): ${err.message}`);
+  if (setupComplete) {
+    // Start Ollama if it was successfully installed (or if flag is unset for legacy setups)
+    if (installedServices.ollama !== false) {
+      try {
+        await processManager.startService('ollama');
+      } catch (err) {
+        logger.error(`Failed to start Ollama: ${err.message}`);
+      }
+    }
+
+    // Start LiteLLM if it was installed
+    if (installedServices.litellm) {
+      try {
+        await litellm.startLiteLLM({});
+      } catch (err) {
+        logger.warn(`LiteLLM failed to start: ${err.message}`);
+      }
+    }
+
+    // comfyui, whisper, kokoro are started on-demand by the VRAM orchestrator
+  } else {
+    logger.info('main: setup not complete — skipping service startup');
   }
 }
 

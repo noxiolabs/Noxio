@@ -17,14 +17,16 @@ const { contextBridge, ipcRenderer } = require('electron');
  * Any channel not in this list is silently ignored.
  */
 const VALID_RECEIVE_CHANNELS = [
-  'service-status',    // { service: string, status: string, pid: number|null }
-  'stream-token',      // token: string
-  'stream-complete',   // void
-  'install-progress',  // { step: string, percent: number, message: string }
-  'mode-ready',        // mode: string
-  'vram-update',       // { usedGB: number, availableGB: number }
-  'download-progress', // { model: string, percent: number }
-  'image-progress',    // percent: number (0–100) — emitted during image generation
+  'service-status',           // { service: string, status: string, pid: number|null }
+  'stream-token',             // token: string
+  'stream-complete',          // void
+  'install-progress',         // { step: string, percent: number, message: string }
+  'install-error',            // { step: string, message: string, retryable: boolean }
+  'install-service-complete', // { service: string, executablePath: string|null }
+  'mode-ready',               // mode: string
+  'vram-update',              // { usedGB: number, availableGB: number }
+  'download-progress',        // { model: string, percent: number }
+  'image-progress',           // percent: number (0–100) — emitted during image generation
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -76,10 +78,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /**
    * Starts the installation sequence. Progress arrives via 'install-progress' events.
+   * Errors arrive via 'install-error' events.
+   * Service completions arrive via 'install-service-complete' events.
    * @param {InstallConfig} config
-   * @returns {Promise<void>}
+   * @returns {Promise<{success: boolean}>}
    */
   startInstallation: (config) => ipcRenderer.invoke('start-installation', config),
+
+  /**
+   * Returns available filesystem drives with size information.
+   * @returns {Promise<Array<{letter: string, label: string, totalGB: number, freeGB: number}>>}
+   */
+  getAvailableDrives: () => ipcRenderer.invoke('get-available-drives'),
+
+  /**
+   * Validates that a directory is writable and has sufficient free space (25 GB).
+   * @param {string} dir - Absolute path to validate
+   * @returns {Promise<{ok: boolean, reason: string|null, freeGB: number}>}
+   */
+  validateInstallDir: (dir) => ipcRenderer.invoke('validate-install-dir', { dir }),
+
+  /**
+   * Returns the recommended default install directory (E:\Noxio or %LOCALAPPDATA%\Noxio).
+   * @returns {Promise<{dir: string}>}
+   */
+  getDefaultInstallDir: () => ipcRenderer.invoke('get-default-install-dir'),
+
+  /**
+   * Opens a native folder picker dialog so the user can choose an install location.
+   * @returns {Promise<{dir: string|null}>}
+   */
+  pickInstallDirectory: () => ipcRenderer.invoke('pick-install-directory'),
+
+  /**
+   * Returns resume data for a partially completed installation.
+   * @returns {Promise<{installedServices: Object, servicePaths: Object, installDir: string|null}>}
+   */
+  checkInstallResume: () => ipcRenderer.invoke('check-install-resume'),
 
   /**
    * Returns all locally available Ollama models.

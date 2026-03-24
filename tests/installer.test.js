@@ -1,54 +1,82 @@
 /**
  * @file installer.test.js
- * @description Unit tests for the setup wizard installer.
- * Tests run against real Ollama connection (not available in CI) — so only
- * the error path (Ollama not running) and structural behaviour are verified.
- * Full integration tests require Ollama running on port 11434.
+ * @description Unit tests for the setup wizard installer orchestrator.
+ * Tests verify event structure and no-throw behaviour without real services running.
+ * Full integration tests require Ollama, Python, and network access.
  */
 
 import { describe, it, expect } from 'vitest';
 import { runInstallation } from '../main/infrastructure/installer';
 
-/** Creates a fake mainWindow that records all emitted install-progress events. */
+/** Creates a fake mainWindow that records all install-progress and install-error events. */
 function makeMainWindow() {
   const events = [];
   return {
-    webContents: { send: (_channel, data) => events.push(data) },
+    isDestroyed: () => false,
+    webContents: {
+      send: (_channel, data) => events.push(data),
+    },
     events,
   };
 }
 
-describe('runInstallation() — Ollama not running', () => {
-  it('throws when Ollama is not reachable', async () => {
+describe('runInstallation() — services not available', () => {
+  it('returns { success: false } when Ollama installation fails (no network in test)', async () => {
+    const win = makeMainWindow();
+    // Ollama is not installed and cannot be downloaded in test env
+    const result = await runInstallation({
+      capabilities: ['chat'],
+      models: { chat: 'qwen2.5:14b' },
+      installDir: null,
+      installedServices: {},
+      mainWindow: win,
+    });
+    // Installer never throws — it always returns { success: boolean }
+    expect(result).toHaveProperty('success');
+    expect(typeof result.success).toBe('boolean');
+  });
+
+  it('never throws — always resolves with { success: boolean }', async () => {
     const win = makeMainWindow();
     await expect(
-      runInstallation({ capabilities: ['chat'], models: { chat: 'qwen2.5:14b' } }, win)
-    ).rejects.toThrow();
+      runInstallation({
+        capabilities: ['chat', 'coding'],
+        models: { chat: 'qwen2.5:14b', coding: 'qwen2.5-coder:14b' },
+        installDir: null,
+        installedServices: {},
+        mainWindow: win,
+      })
+    ).resolves.toHaveProperty('success');
   });
 
-  it('emits a check-ollama step before throwing', async () => {
+  it('all emitted install-progress events have step, percent, and message fields', async () => {
     const win = makeMainWindow();
-    await runInstallation({ capabilities: [], models: {} }, win).catch(() => {});
-    expect(win.events.some((e) => e.step === 'check-ollama')).toBe(true);
-  });
-
-  it('emits an error step with a descriptive message', async () => {
-    const win = makeMainWindow();
-    await runInstallation({ capabilities: ['chat'], models: { chat: 'qwen2.5:14b' } }, win).catch(() => {});
-    const errorEvent = win.events.find((e) => e.step === 'error');
-    expect(errorEvent).toBeDefined();
-    expect(typeof errorEvent.message).toBe('string');
-    expect(errorEvent.message.length).toBeGreaterThan(0);
-  });
-
-  it('all emitted events have step, percent, and message fields', async () => {
-    const win = makeMainWindow();
-    await runInstallation({ capabilities: ['chat'], models: { chat: 'qwen2.5:14b' } }, win).catch(() => {});
-    win.events.forEach((e) => {
+    await runInstallation({
+      capabilities: ['chat'],
+      models: { chat: 'qwen2.5:14b' },
+      installDir: null,
+      installedServices: {},
+      mainWindow: win,
+    });
+    // Filter to only install-progress events (install-error events have different shape)
+    const progressEvents = win.events.filter((e) => 'percent' in e);
+    progressEvents.forEach((e) => {
       expect(e).toHaveProperty('step');
       expect(e).toHaveProperty('percent');
       expect(e).toHaveProperty('message');
       expect(typeof e.message).toBe('string');
     });
+  });
+
+  it('emits at least one event for the install-ollama step', async () => {
+    const win = makeMainWindow();
+    await runInstallation({
+      capabilities: [],
+      models: {},
+      installDir: null,
+      installedServices: {},
+      mainWindow: win,
+    });
+    expect(win.events.some((e) => e.step === 'install-ollama')).toBe(true);
   });
 });

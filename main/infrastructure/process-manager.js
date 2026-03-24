@@ -23,6 +23,20 @@ const logger = require('../utils/logger');
 let _win = null;
 
 /**
+ * Service executable paths persisted from a previous install.
+ * Loaded at startup from electron-store via setPersistedPaths().
+ * @type {Object.<string, string|null>}
+ */
+let _servicePaths = {};
+
+/**
+ * Tracks which services were successfully installed.
+ * Services not marked installed will emit 'not-installed' status instead of starting.
+ * @type {Object.<string, boolean>}
+ */
+let _installedServices = {};
+
+/**
  * Registry of service configurations. Executable paths and some args are resolved
  * at init/startService time — null entries are filled in dynamically.
  * @type {Object.<string, {executable: string|null, args: string[], cwd: string|null, env: Object, maxRestarts: number, restartDelayBaseMs: number}>}
@@ -51,7 +65,8 @@ const SERVICE_CONFIG = {
   },
   comfyui: {
     executable: null,
-    args: ['main.py', '--listen', '0.0.0.0', '--port', '8188'],
+    // run_nvidia_gpu.bat is a self-contained launcher — no extra args needed
+    args: [],
     cwd: null,
     env: {},
     maxRestarts: 5,
@@ -228,6 +243,19 @@ function init(win) {
 }
 
 /**
+ * Loads persisted service paths and installed-service flags from the electron-store
+ * snapshot. Must be called before startService() so that custom executables are used.
+ *
+ * @param {Object.<string, string|null>} servicePaths - Map of service name → executable path
+ * @param {Object.<string, boolean>} installedServices - Map of service name → installed flag
+ */
+function setPersistedPaths(servicePaths, installedServices) {
+  _servicePaths = servicePaths || {};
+  _installedServices = installedServices || {};
+  logger.info('process-manager: persisted paths loaded', { servicePaths, installedServices });
+}
+
+/**
  * Spawns a service process, attaches crash detection, and manages auto-restart
  * with exponential backoff. Internal — called by startService and by the restart loop.
  * @param {string} name - Service name key in SERVICE_CONFIG
@@ -344,6 +372,8 @@ function checkOllamaAlreadyRunning() {
 
 /**
  * Starts a named background service. Resolves executable paths on first call.
+ * If the service is not yet installed (per _installedServices), emits 'not-installed'
+ * and returns without spawning.
  * @param {string} name - 'ollama' | 'litellm' | 'comfyui' | 'whisper' | 'kokoro'
  * @returns {Promise<void>}
  */
@@ -354,6 +384,14 @@ async function startService(name) {
 
   if (serviceStates[name].status === 'running' || serviceStates[name].status === 'starting') {
     logger.info(`process-manager: [${name}] already running or starting — skipping`);
+    return;
+  }
+
+  // Non-Ollama services require successful installation before they can be started.
+  // Ollama is managed separately (adopt-or-spawn) so this check doesn't apply to it.
+  if (name !== 'ollama' && _installedServices[name] === false) {
+    logger.info(`process-manager: [${name}] not installed — emitting not-installed`);
+    emitStatus(name, 'not-installed');
     return;
   }
 
@@ -373,7 +411,17 @@ async function startService(name) {
     }
   }
 
-  // Resolve executable on first start
+  // Check persisted path first — set by installer via setPersistedPaths()
+  if (!SERVICE_CONFIG[name].executable && _servicePaths[name]) {
+    SERVICE_CONFIG[name].executable = _servicePaths[name];
+    // For ComfyUI .bat launcher, the cwd must be the bat's directory
+    if (name === 'comfyui') {
+      SERVICE_CONFIG[name].cwd = path.dirname(_servicePaths[name]);
+    }
+    logger.info(`process-manager: [${name}] using persisted path "${_servicePaths[name]}"`);
+  }
+
+  // Resolve executable on first start (fallback dynamic resolution)
   if (!SERVICE_CONFIG[name].executable) {
     try {
       if (name === 'ollama') {
@@ -498,6 +546,7 @@ function getServiceStates() {
 
 module.exports = {
   init,
+  setPersistedPaths,
   startService,
   stopService,
   stopAll,

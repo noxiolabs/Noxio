@@ -1,109 +1,430 @@
 /**
  * @file installer.js
- * @description Runs the setup wizard installation sequence. Checks that required
- * services are running, then downloads selected LLM models via Ollama. Emits
- * 'install-progress' events throughout so the wizard progress bar stays accurate.
+ * @description Orchestrates the full Noxio setup wizard installation sequence.
+ * Installs Ollama, Python-based services (LiteLLM, Whisper, Kokoro), ComfyUI, and
+ * downloads all required AI models in the correct order.
  *
- * v0.1 scope:
- *   - Verify Ollama is reachable (must already be installed by the user)
- *   - Download selected chat/coding models via Ollama pull
+ * Design principles:
+ *   - Never throws — all errors are caught and emitted as 'install-error' events
+ *   - Each step is skipped if the service is already marked installed (idempotent)
+ *   - Only steps relevant to the user's selected capabilities are executed
+ *   - Progress is scaled per-step and emitted as 'install-progress' events (0–100 overall)
  *
- * Deferred to later phases:
- *   - ComfyUI model downloads (Phase 5)
- *   - Whisper / Kokoro model downloads (Phase 6)
- *   - Silent service installation (Ollama, Python, LiteLLM)
+ * Events emitted to renderer:
+ *   install-progress        { step, percent, message }
+ *   install-error           { step, message, retryable }
+ *   install-service-complete { service, executablePath }
  */
 
 'use strict';
 
 const logger = require('../utils/logger');
-const ollama = require('../services/ollama');
 const { downloadModel } = require('../wizard/model-downloader');
+const { isOllamaInstalled, installOllama } = require('../wizard/ollama-installer');
+const {
+  resolveSystemPython,
+  installComfyUI,
+  createVenv,
+  downloadFluxModel,
+  downloadWhisperModel,
+  downloadKokoroModel,
+} = require('../wizard/service-installer');
+
+// ─── Per-step weight table ────────────────────────────────────────────────────
+// Higher weights = more overall-percent budget allocated to the step.
+const STEP_WEIGHTS = {
+  'install-ollama':        5,
+  'verify-python':         2,
+  'install-comfyui':      12,
+  'install-litellm':       5,
+  'install-whisper':       5,
+  'install-kokoro':        5,
+  'download-flux':        20,
+  'download-whisper-model': 8,
+  'download-kokoro-model':  3,
+  // LLM models: 20 points each (applied per capability)
+};
+const LLM_WEIGHT_PER_MODEL = 20;
+
+// ─── Event emitters ───────────────────────────────────────────────────────────
 
 /**
- * Sends an install-progress event to the renderer.
- * @param {import('electron').BrowserWindow} mainWindow
+ * Emits an install-progress event to the renderer.
+ * @param {import('electron').BrowserWindow} win
  * @param {string} step
- * @param {number} percent
+ * @param {number} percent - Overall install progress 0–100
  * @param {string} message
  */
-function emitProgress(mainWindow, step, percent, message) {
-  mainWindow.webContents.send('install-progress', { step, percent, message });
+function emitProgress(win, step, percent, message) {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('install-progress', { step, percent, message });
+  }
 }
 
 /**
- * Runs the wizard installation sequence for the selected capabilities and models.
+ * Emits an install-error event to the renderer.
+ * @param {import('electron').BrowserWindow} win
+ * @param {string} step
+ * @param {string} message
+ * @param {boolean} retryable
+ */
+function emitError(win, step, message, retryable) {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('install-error', { step, message, retryable });
+  }
+}
+
+/**
+ * Emits an install-service-complete event to the renderer.
+ * @param {import('electron').BrowserWindow} win
+ * @param {string} service
+ * @param {string|null} executablePath
+ */
+function emitServiceComplete(win, service, executablePath) {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('install-service-complete', { service, executablePath: executablePath ?? null });
+  }
+}
+
+// ─── Step progress scaler ─────────────────────────────────────────────────────
+
+/**
+ * Returns a progress callback that scales a step's 0–100 into the overall
+ * percent range [rangeStart, rangeEnd] and emits an install-progress event.
  *
- * Steps:
- *   1. Verify Ollama is reachable
- *   2. Download each LLM model (chat + coding) via Ollama pull
- *   3. Emit completion
+ * @param {import('electron').BrowserWindow} win
+ * @param {string} stepName
+ * @param {number} rangeStart - Overall percent where this step starts
+ * @param {number} rangeEnd - Overall percent where this step ends
+ * @param {string} message - Human-readable status message prefix
+ * @returns {function(number): void}
+ */
+function makeStepProgress(win, stepName, rangeStart, rangeEnd, message) {
+  return (stepPercent) => {
+    const clamped = Math.min(100, Math.max(0, stepPercent));
+    const overall = Math.round(rangeStart + (clamped / 100) * (rangeEnd - rangeStart));
+    emitProgress(win, stepName, overall, `${message} ${clamped}%`);
+  };
+}
+
+// ─── Step range calculator ────────────────────────────────────────────────────
+
+/**
+ * Computes [start, end] overall-percent ranges for each active step based on weights.
+ *
+ * @param {string[]} activeSteps - Ordered list of step keys
+ * @param {Object.<string, number>} weights - Weight per step key
+ * @returns {Object.<string, {start: number, end: number}>}
+ */
+function computeStepRanges(activeSteps, weights) {
+  const totalWeight = activeSteps.reduce((sum, s) => sum + (weights[s] ?? 1), 0);
+  const ranges = {};
+  let cursor = 0;
+  for (const step of activeSteps) {
+    const weight = weights[step] ?? 1;
+    const portion = (weight / totalWeight) * 100;
+    ranges[step] = { start: Math.round(cursor), end: Math.round(cursor + portion) };
+    cursor += portion;
+  }
+  return ranges;
+}
+
+// ─── Main orchestrator ────────────────────────────────────────────────────────
+
+/**
+ * Runs the full installation sequence for the selected capabilities and models.
  *
  * @param {Object} config
- * @param {string[]} config.capabilities - e.g. ['chat', 'coding', 'voice']
- * @param {Object} config.models - { chat: 'qwen2.5:14b', coding: 'qwen2.5-coder:14b', ... }
- * @param {import('electron').BrowserWindow} mainWindow
- * @returns {Promise<void>}
+ * @param {string[]} config.capabilities - Selected capabilities e.g. ['chat', 'coding', 'image', 'voice']
+ * @param {Object.<string, string>} config.models - { chat: 'qwen2.5:14b', coding: 'qwen2.5-coder:14b', ... }
+ * @param {string} config.installDir - Absolute path to the chosen install root
+ * @param {Object.<string, boolean>} [config.installedServices={}] - Already-installed services to skip
+ * @param {import('electron').BrowserWindow} config.mainWindow
+ * @returns {Promise<{success: boolean}>}
  */
-async function runInstallation(config, mainWindow) {
-  logger.info('installer: starting', config);
-  const { capabilities = [], models = {} } = config;
+async function runInstallation({ capabilities = [], models = {}, installDir, installedServices = {}, mainWindow: win }) {
+  logger.info('installer: starting full installation', { capabilities, installDir });
 
-  // ── Step 1: Verify Ollama is running ──────────────────────────────────────
-  emitProgress(mainWindow, 'check-ollama', 5, 'Checking Ollama...');
+  const hasImage = capabilities.includes('image');
+  const hasVoice = capabilities.includes('voice');
+  const llmCaps  = ['chat', 'coding'].filter((c) => capabilities.includes(c) && models[c]);
 
-  const running = await ollama.checkRunning();
-  if (!running) {
-    const msg = 'Ollama is not running. Please install and start Ollama, then retry.';
-    emitProgress(mainWindow, 'error', 5, msg);
-    throw new Error(msg);
+  // ── Build ordered list of active steps ──────────────────────────────────
+  /** @type {string[]} */
+  const activeSteps = [];
+
+  activeSteps.push('install-ollama');
+  activeSteps.push('verify-python');
+  if (hasImage) activeSteps.push('install-comfyui');
+  activeSteps.push('install-litellm');
+  if (hasVoice) activeSteps.push('install-whisper');
+  if (hasVoice) activeSteps.push('install-kokoro');
+  if (hasImage) activeSteps.push('download-flux');
+  if (hasVoice) activeSteps.push('download-whisper-model');
+  if (hasVoice) activeSteps.push('download-kokoro-model');
+  for (const cap of llmCaps) {
+    activeSteps.push(`download-llm-${cap}`);
   }
 
-  emitProgress(mainWindow, 'check-ollama', 10, 'Ollama is running ✓');
+  // Build weights map including dynamic LLM steps
+  const weights = { ...STEP_WEIGHTS };
+  for (const cap of llmCaps) {
+    weights[`download-llm-${cap}`] = LLM_WEIGHT_PER_MODEL;
+  }
 
-  // ── Step 2: Download LLM models ───────────────────────────────────────────
-  // Only chat and coding are Ollama (GGUF) in v0.1.
-  // Image = ComfyUI (Phase 5). Voice = Whisper/Kokoro (Phase 6).
-  const llmCaps = ['chat', 'coding'].filter(
-    (cap) => capabilities.includes(cap) && models[cap]
-  );
+  const ranges = computeStepRanges(activeSteps, weights);
 
-  const progressRange = 85; // spans 10% → 95%
-  const perModel = llmCaps.length > 0 ? progressRange / llmCaps.length : 0;
+  /** Python executable resolved in verify-python step, used by later venv steps */
+  let pythonExe = null;
 
-  for (let i = 0; i < llmCaps.length; i++) {
-    const cap = llmCaps[i];
-    const model = models[cap];
-    const basePercent = 10 + i * perModel;
-
-    emitProgress(mainWindow, `download-${cap}`, Math.round(basePercent), `Downloading ${model}...`);
+  // ── Step: install-ollama ─────────────────────────────────────────────────
+  {
+    const stepName = 'install-ollama';
+    const { start, end } = ranges[stepName];
+    const stepProgress = makeStepProgress(win, stepName, start, end, 'Installing Ollama...');
 
     try {
+      if (installedServices.ollama) {
+        logger.info('installer: Ollama already installed — skipping');
+        emitProgress(win, stepName, end, 'Ollama already installed ✓');
+      } else {
+        const { installed } = await isOllamaInstalled();
+        if (installed) {
+          logger.info('installer: Ollama already present — skipping download');
+          emitProgress(win, stepName, end, 'Ollama already installed ✓');
+        } else {
+          emitProgress(win, stepName, start, 'Downloading and installing Ollama...');
+          await installOllama(stepProgress);
+          emitProgress(win, stepName, end, 'Ollama installed ✓');
+        }
+        emitServiceComplete(win, 'ollama', null);
+      }
+    } catch (err) {
+      logger.error(`installer: install-ollama failed — ${err.message}`);
+      emitError(win, stepName, `Failed to install Ollama: ${err.message}`, true);
+      return { success: false };
+    }
+  }
+
+  // ── Step: verify-python ──────────────────────────────────────────────────
+  {
+    const stepName = 'verify-python';
+    const { start, end } = ranges[stepName];
+
+    try {
+      emitProgress(win, stepName, start, 'Checking Python installation...');
+      pythonExe = await resolveSystemPython();
+      emitProgress(win, stepName, end, 'Python 3.11+ found ✓');
+    } catch (err) {
+      logger.error(`installer: verify-python failed — ${err.message}`);
+      if (hasImage || hasVoice) {
+        emitError(
+          win,
+          stepName,
+          'Python 3.11+ not found. Please install Python from python.org and restart the wizard.',
+          false
+        );
+        return { success: false };
+      }
+      // No image/voice needed — Python is optional, continue without it
+      logger.warn('installer: Python not found but image/voice not selected — continuing');
+      emitProgress(win, stepName, end, 'Python not found — skipping (not needed for selected capabilities)');
+    }
+  }
+
+  // ── Step: install-comfyui ────────────────────────────────────────────────
+  if (hasImage) {
+    const stepName = 'install-comfyui';
+    const { start, end } = ranges[stepName];
+    const stepProgress = makeStepProgress(win, stepName, start, end, 'Installing ComfyUI...');
+
+    try {
+      if (installedServices.comfyui) {
+        logger.info('installer: ComfyUI already installed — skipping');
+        emitProgress(win, stepName, end, 'ComfyUI already installed ✓');
+      } else {
+        emitProgress(win, stepName, start, 'Downloading ComfyUI portable package...');
+        const batPath = await installComfyUI(installDir, stepProgress);
+        emitProgress(win, stepName, end, 'ComfyUI installed ✓');
+        emitServiceComplete(win, 'comfyui', batPath);
+      }
+    } catch (err) {
+      logger.error(`installer: install-comfyui failed — ${err.message}`);
+      emitError(win, stepName, `Failed to install ComfyUI: ${err.message}`, true);
+      return { success: false };
+    }
+  }
+
+  // ── Step: install-litellm ────────────────────────────────────────────────
+  {
+    const stepName = 'install-litellm';
+    const { start, end } = ranges[stepName];
+    const stepProgress = makeStepProgress(win, stepName, start, end, 'Installing LiteLLM...');
+
+    try {
+      if (installedServices.litellm) {
+        logger.info('installer: LiteLLM already installed — skipping');
+        emitProgress(win, stepName, end, 'LiteLLM already installed ✓');
+      } else if (!pythonExe) {
+        logger.warn('installer: no Python — skipping LiteLLM venv');
+        emitProgress(win, stepName, end, 'LiteLLM skipped (Python not available)');
+      } else {
+        emitProgress(win, stepName, start, 'Creating LiteLLM virtual environment...');
+        await createVenv({
+          service: 'litellm',
+          installDir,
+          pythonExe,
+          packages: ['litellm[proxy]'],
+          onProgress: stepProgress,
+        });
+        const litellmExe = require('path').join(installDir, 'venvs', 'litellm', 'Scripts', 'litellm.exe');
+        emitProgress(win, stepName, end, 'LiteLLM installed ✓');
+        emitServiceComplete(win, 'litellm', litellmExe);
+      }
+    } catch (err) {
+      logger.error(`installer: install-litellm failed — ${err.message}`);
+      emitError(win, stepName, `Failed to install LiteLLM: ${err.message}`, true);
+      // LiteLLM failure is not fatal for chat/coding — continue
+    }
+  }
+
+  // ── Step: install-whisper ────────────────────────────────────────────────
+  if (hasVoice) {
+    const stepName = 'install-whisper';
+    const { start, end } = ranges[stepName];
+    const stepProgress = makeStepProgress(win, stepName, start, end, 'Installing Whisper...');
+
+    try {
+      if (installedServices.whisper) {
+        logger.info('installer: Whisper already installed — skipping');
+        emitProgress(win, stepName, end, 'Whisper already installed ✓');
+      } else {
+        emitProgress(win, stepName, start, 'Creating Whisper virtual environment...');
+        const venvPython = await createVenv({
+          service: 'whisper',
+          installDir,
+          pythonExe,
+          packages: ['faster-whisper'],
+          onProgress: stepProgress,
+        });
+        emitProgress(win, stepName, end, 'Whisper installed ✓');
+        emitServiceComplete(win, 'whisper', venvPython);
+      }
+    } catch (err) {
+      logger.error(`installer: install-whisper failed — ${err.message}`);
+      emitError(win, stepName, `Failed to install Whisper: ${err.message}`, true);
+      return { success: false };
+    }
+  }
+
+  // ── Step: install-kokoro ─────────────────────────────────────────────────
+  if (hasVoice) {
+    const stepName = 'install-kokoro';
+    const { start, end } = ranges[stepName];
+    const stepProgress = makeStepProgress(win, stepName, start, end, 'Installing Kokoro TTS...');
+
+    try {
+      if (installedServices.kokoro) {
+        logger.info('installer: Kokoro already installed — skipping');
+        emitProgress(win, stepName, end, 'Kokoro already installed ✓');
+      } else {
+        emitProgress(win, stepName, start, 'Creating Kokoro virtual environment...');
+        const venvPython = await createVenv({
+          service: 'kokoro',
+          installDir,
+          pythonExe,
+          packages: ['kokoro-onnx', 'soundfile'],
+          onProgress: stepProgress,
+        });
+        emitProgress(win, stepName, end, 'Kokoro installed ✓');
+        emitServiceComplete(win, 'kokoro', venvPython);
+      }
+    } catch (err) {
+      logger.error(`installer: install-kokoro failed — ${err.message}`);
+      emitError(win, stepName, `Failed to install Kokoro: ${err.message}`, true);
+      return { success: false };
+    }
+  }
+
+  // ── Step: download-flux ──────────────────────────────────────────────────
+  if (hasImage) {
+    const stepName = 'download-flux';
+    const { start, end } = ranges[stepName];
+    const stepProgress = makeStepProgress(win, stepName, start, end, 'Downloading FLUX model...');
+
+    try {
+      emitProgress(win, stepName, start, 'Downloading FLUX.1-schnell model (≈9 GB)...');
+      await downloadFluxModel(installDir, stepProgress);
+      emitProgress(win, stepName, end, 'FLUX model ready ✓');
+    } catch (err) {
+      logger.error(`installer: download-flux failed — ${err.message}`);
+      emitError(win, stepName, `Failed to download FLUX model: ${err.message}`, true);
+      return { success: false };
+    }
+  }
+
+  // ── Step: download-whisper-model ─────────────────────────────────────────
+  if (hasVoice) {
+    const stepName = 'download-whisper-model';
+    const { start, end } = ranges[stepName];
+    const stepProgress = makeStepProgress(win, stepName, start, end, 'Downloading Whisper model...');
+
+    try {
+      emitProgress(win, stepName, start, 'Downloading Whisper medium model...');
+      await downloadWhisperModel(installDir, stepProgress);
+      emitProgress(win, stepName, end, 'Whisper model ready ✓');
+    } catch (err) {
+      logger.error(`installer: download-whisper-model failed — ${err.message}`);
+      emitError(win, stepName, `Failed to download Whisper model: ${err.message}`, true);
+      return { success: false };
+    }
+  }
+
+  // ── Step: download-kokoro-model ──────────────────────────────────────────
+  if (hasVoice) {
+    const stepName = 'download-kokoro-model';
+    const { start, end } = ranges[stepName];
+    const stepProgress = makeStepProgress(win, stepName, start, end, 'Downloading Kokoro model...');
+
+    try {
+      emitProgress(win, stepName, start, 'Downloading Kokoro TTS model...');
+      await downloadKokoroModel(installDir, stepProgress);
+      emitProgress(win, stepName, end, 'Kokoro model ready ✓');
+    } catch (err) {
+      logger.error(`installer: download-kokoro-model failed — ${err.message}`);
+      emitError(win, stepName, `Failed to download Kokoro model: ${err.message}`, true);
+      return { success: false };
+    }
+  }
+
+  // ── Steps: download-llm-{cap} ────────────────────────────────────────────
+  for (const cap of llmCaps) {
+    const stepName = `download-llm-${cap}`;
+    const { start, end } = ranges[stepName];
+    const model = models[cap];
+
+    try {
+      emitProgress(win, stepName, start, `Downloading ${model}...`);
       await downloadModel({
         model,
         source: 'ollama',
         onProgress: ({ percent }) => {
-          const scaled = Math.round(basePercent + (percent / 100) * perModel);
-          emitProgress(mainWindow, `download-${cap}`, scaled, `Downloading ${model}... ${percent}%`);
+          const overall = Math.round(start + (percent / 100) * (end - start));
+          emitProgress(win, stepName, overall, `Downloading ${model}... ${percent}%`);
         },
       });
-
-      emitProgress(
-        mainWindow,
-        `download-${cap}`,
-        Math.round(basePercent + perModel),
-        `${model} ready ✓`
-      );
+      emitProgress(win, stepName, end, `${model} ready ✓`);
     } catch (err) {
-      logger.error(`installer: download failed for "${model}" — ${err.message}`);
-      emitProgress(mainWindow, 'error', Math.round(basePercent), `Failed to download ${model}: ${err.message}`);
-      throw err;
+      logger.error(`installer: download-llm-${cap} failed — ${err.message}`);
+      emitError(win, stepName, `Failed to download ${model}: ${err.message}`, true);
+      return { success: false };
     }
   }
 
-  // ── Step 3: Done ──────────────────────────────────────────────────────────
-  emitProgress(mainWindow, 'complete', 100, 'Installation complete ✓');
-  logger.info('installer: complete');
+  // ── Done ─────────────────────────────────────────────────────────────────
+  emitProgress(win, 'complete', 100, 'Installation complete ✓');
+  logger.info('installer: all steps complete');
+  return { success: true };
 }
 
 module.exports = { runInstallation };
