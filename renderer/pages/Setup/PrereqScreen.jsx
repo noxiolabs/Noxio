@@ -118,7 +118,7 @@ export default function PrereqScreen({ onNext, selectedCapabilities = [] }) {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-8 px-8">
+    <div className="flex flex-col items-center h-full gap-8 px-8 overflow-y-auto py-8">
       <div className="text-center">
         <h2 className="text-2xl font-semibold text-white">Before we begin</h2>
         <p className="mt-1 text-zinc-500 text-sm">

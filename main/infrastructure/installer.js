@@ -23,6 +23,7 @@ const { downloadModel } = require('../wizard/model-downloader');
 const { isOllamaInstalled, installOllama } = require('../wizard/ollama-installer');
 const ollama = require('../services/ollama');
 const processManager = require('./process-manager');
+const manifest = require('./manifest');
 const Store = require('electron-store');
 
 const store = new Store({ name: 'noxio-settings' });
@@ -229,6 +230,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         }
         emitServiceComplete(win, 'ollama', null);
         persistServiceComplete('ollama', null);
+        manifest.markServiceInstalled(store, 'ollama', null);
       }
     } catch (err) {
       logger.error(`installer: install-ollama failed — ${err.message}`);
@@ -310,6 +312,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         emitProgress(win, stepName, end, 'ComfyUI installed ✓');
         emitServiceComplete(win, 'comfyui', batPath);
         persistServiceComplete('comfyui', batPath);
+        manifest.markServiceInstalled(store, 'comfyui', batPath);
       }
     } catch (err) {
       logger.error(`installer: install-comfyui failed — ${err.message}`);
@@ -364,6 +367,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         emitProgress(win, stepName, end, 'LiteLLM installed ✓');
         emitServiceComplete(win, 'litellm', litellmExe);
         persistServiceComplete('litellm', litellmExe);
+        manifest.markServiceInstalled(store, 'litellm', litellmExe);
       }
     } catch (err) {
       logger.error(`installer: install-litellm failed — ${err.message}`);
@@ -394,6 +398,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         emitProgress(win, stepName, end, 'Whisper installed ✓');
         emitServiceComplete(win, 'whisper', venvPython);
         persistServiceComplete('whisper', venvPython);
+        manifest.markServiceInstalled(store, 'whisper', venvPython);
       }
     } catch (err) {
       logger.error(`installer: install-whisper failed — ${err.message}`);
@@ -424,6 +429,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         emitProgress(win, stepName, end, 'Kokoro installed ✓');
         emitServiceComplete(win, 'kokoro', venvPython);
         persistServiceComplete('kokoro', venvPython);
+        manifest.markServiceInstalled(store, 'kokoro', venvPython);
       }
     } catch (err) {
       logger.error(`installer: install-kokoro failed — ${err.message}`);
@@ -442,6 +448,18 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
       emitProgress(win, stepName, start, 'Downloading FLUX.1-schnell model (≈9 GB)...');
       await downloadFluxModel(installDir, stepProgress);
       emitProgress(win, stepName, end, 'FLUX model ready ✓');
+      const fluxFilePath = require('path').join(
+        installDir,
+        'comfyui', 'ComfyUI_windows_portable', 'ComfyUI', 'models', 'checkpoints',
+        'flux1-schnell-fp8.safetensors'
+      );
+      manifest.markModelInstalled(store, {
+        modelId: 'flux1-schnell-fp8',
+        backend: 'comfyui',
+        capability: 'image',
+        sizeGB: 9,
+        filePath: fluxFilePath,
+      });
     } catch (err) {
       logger.error(`installer: download-flux failed — ${err.message}`);
       emitError(win, stepName, `Failed to download FLUX model: ${err.message}`, true);
@@ -459,6 +477,14 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
       emitProgress(win, stepName, start, 'Downloading Whisper medium model...');
       await downloadWhisperModel(installDir, stepProgress);
       emitProgress(win, stepName, end, 'Whisper model ready ✓');
+      const whisperModelDir = require('path').join(installDir, 'venvs', 'whisper', 'models');
+      manifest.markModelInstalled(store, {
+        modelId: 'whisper-medium',
+        backend: 'whisper',
+        capability: 'stt',
+        sizeGB: 1.5,
+        filePath: whisperModelDir,
+      });
     } catch (err) {
       logger.error(`installer: download-whisper-model failed — ${err.message}`);
       emitError(win, stepName, `Failed to download Whisper model: ${err.message}`, true);
@@ -476,6 +502,14 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
       emitProgress(win, stepName, start, 'Downloading Kokoro TTS model...');
       await downloadKokoroModel(installDir, stepProgress);
       emitProgress(win, stepName, end, 'Kokoro model ready ✓');
+      const kokoroModelDir = require('path').join(installDir, 'venvs', 'kokoro', 'models');
+      manifest.markModelInstalled(store, {
+        modelId: 'kokoro-v0.19',
+        backend: 'kokoro',
+        capability: 'tts',
+        sizeGB: 0.3,
+        filePath: kokoroModelDir,
+      });
     } catch (err) {
       logger.error(`installer: download-kokoro-model failed — ${err.message}`);
       emitError(win, stepName, `Failed to download Kokoro model: ${err.message}`, true);
@@ -507,6 +541,13 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
       if (alreadyPulled) {
         logger.info(`installer: model "${model}" already pulled — skipping`);
         emitProgress(win, stepName, end, `${model} already available ✓`);
+        manifest.markModelInstalled(store, {
+          modelId: model,
+          backend: 'ollama',
+          capability: cap,
+          sizeGB: null,
+          filePath: null,
+        });
         continue;
       }
 
@@ -520,6 +561,13 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         },
       });
       emitProgress(win, stepName, end, `${model} ready ✓`);
+      manifest.markModelInstalled(store, {
+        modelId: model,
+        backend: 'ollama',
+        capability: cap,
+        sizeGB: null,
+        filePath: null,
+      });
     } catch (err) {
       logger.error(`installer: download-llm-${cap} failed — ${err.message}`);
       emitError(win, stepName, `Failed to download ${model}: ${err.message}`, true);

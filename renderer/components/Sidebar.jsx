@@ -3,9 +3,12 @@
  * @description Left navigation sidebar. Switches between Chat, Create, Voice,
  * and Agent panels. Create / Voice / Agent are disabled until their phases ship.
  * Gaming Mode button (Phase 5) will pause AI services to free VRAM for games.
+ * Settings gear button opens the SettingsOverlay on the Models section.
  */
 
 import React from 'react';
+import { useDispatch } from 'react-redux';
+import { openSettingsPanel } from '../store/slices/settings';
 
 const MODES = [
   { id: 'chat',   label: 'Chat',   Icon: ChatIcon   },
@@ -18,6 +21,13 @@ const MODES = [
  * @param {{ activeMode: string, onModeChange: (mode: string) => void }} props
  */
 export default function Sidebar({ activeMode, onModeChange }) {
+  const dispatch = useDispatch();
+
+  /** Opens the settings overlay on the Models section. */
+  function handleOpenSettings() {
+    dispatch(openSettingsPanel('models'));
+  }
+
   return (
     <aside className="flex flex-col w-[60px] bg-[#0a0a0c] border-r border-zinc-800/60 py-3 gap-0.5 flex-shrink-0">
       {MODES.map(({ id, label, Icon, disabled }) => (
@@ -40,6 +50,16 @@ export default function Sidebar({ activeMode, onModeChange }) {
       ))}
 
       <div className="flex-1" />
+
+      {/* Settings gear — opens SettingsOverlay */}
+      <button
+        onClick={handleOpenSettings}
+        title="Settings"
+        className="flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+      >
+        <GearIcon />
+        <span className="text-[9px] mt-1 font-medium tracking-wide">Settings</span>
+      </button>
 
       <button
         disabled
@@ -88,6 +108,15 @@ function AgentIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
       <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }

@@ -33,6 +33,15 @@ const initialState = {
 
   /** Active workload mode — drives VRAM orchestration */
   currentMode: 'chat',
+
+  /**
+   * Last routing decision received from the main process via 'routing-decision' event.
+   * Cleared (reset to local) when streaming ends.
+   */
+  lastRouting: {
+    provider: 'local', // 'local' | 'openai' | 'anthropic' | 'google'
+    model: null,       // model name string, or null when local
+  },
 };
 
 const infrastructureSlice = createSlice({
@@ -77,10 +86,22 @@ const infrastructureSlice = createSlice({
     setCurrentMode(state, action) {
       state.currentMode = action.payload;
     },
+
+    /**
+     * Records the last routing decision from the main process.
+     * Triggered by 'routing-decision' IPC event at the start of each stream.
+     * @param {Object} action.payload
+     * @param {'local'|'openai'|'anthropic'|'google'} action.payload.provider
+     * @param {string|null} action.payload.model
+     */
+    setLastRouting(state, action) {
+      const { provider, model } = action.payload;
+      state.lastRouting = { provider: provider ?? 'local', model: model ?? null };
+    },
   },
 });
 
-export const { updateServiceStatus, setHardware, updateVram, setCurrentMode } =
+export const { updateServiceStatus, setHardware, updateVram, setCurrentMode, setLastRouting } =
   infrastructureSlice.actions;
 
 export default infrastructureSlice.reducer;

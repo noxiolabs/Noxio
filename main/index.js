@@ -26,11 +26,18 @@ const processManager = require('./infrastructure/process-manager');
 const healthChecker = require('./infrastructure/health-checker');
 const { detectHardware } = require('./infrastructure/detector');
 const litellm = require('./services/litellm');
+const manifest = require('./infrastructure/manifest');
+const ollama = require('./services/ollama');
 const logger = require('./utils/logger');
 
 // electron-store — read setup state and persisted service paths at startup
 const Store = require('electron-store');
 const store = new Store({ name: 'noxio-settings' });
+
+// Initialise the install manifest immediately after the store is created.
+// This ensures the 'manifest' key exists before any service or IPC handler
+// tries to read or write it.
+manifest.initManifest(store);
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -101,6 +108,17 @@ async function startBackgroundServices(win) {
   const servicePaths = store.get('settings.servicePaths', {});
   const installedServices = store.get('settings.installedServices', {});
   processManager.setPersistedPaths(servicePaths, installedServices);
+
+  // Run a background manifest verification pass now that paths are loaded.
+  // Non-blocking — does not delay service startup. Emits 'manifest-verified'
+  // to the renderer once complete so the UI can reflect accurate install state.
+  manifest.verifyManifest(store, () => ollama.listModels().catch(() => [])).then((updated) => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('manifest-verified', updated);
+    }
+  }).catch(() => {
+    // verifyManifest is already non-throwing — this is a final safety net
+  });
 
   // Start health polling — runs every 5s, emits service-status + vram-update
   healthChecker.startPolling(win);

@@ -137,23 +137,24 @@ export default function InstallingScreen({ capabilities, models, installDir, ins
   }
 
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-6 px-8">
-      <div className="text-center">
+    <div className="flex flex-col h-full min-h-0 px-8">
+      {/* Pinned header — always visible */}
+      <div className="flex-shrink-0 pt-8 pb-4 text-center w-full max-w-sm mx-auto">
         <h2 className="text-2xl font-semibold text-white">Setting things up</h2>
         <p className="text-zinc-500 text-sm mt-1">This may take a while depending on your connection.</p>
-      </div>
-
-      <div className="w-full max-w-sm space-y-2">
-        <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
-          <div
-            className="h-full bg-violet-600 rounded-full transition-all duration-500 ease-out"
-            style={{ width: `${progress}%` }}
-          />
+        <div className="mt-4 space-y-2">
+          <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="h-full bg-violet-600 rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="text-xs text-zinc-600 text-right tabular-nums">{progress}%</p>
         </div>
-        <p className="text-xs text-zinc-600 text-right tabular-nums">{progress}%</p>
       </div>
 
-      <div className="w-full max-w-sm divide-y divide-zinc-800/60">
+      {/* Scrollable step list */}
+      <div className="flex-1 min-h-0 overflow-y-auto w-full max-w-sm mx-auto divide-y divide-zinc-800/60">
         {steps.map(({ step, label }) => (
           <StepRow
             key={step}
@@ -164,26 +165,30 @@ export default function InstallingScreen({ capabilities, models, installDir, ins
         ))}
       </div>
 
-      {installError && (
-        <div className="w-full max-w-sm rounded-lg border border-red-800/40 bg-red-900/10 p-4 space-y-3">
-          <p className="text-sm text-red-400">{installError.message}</p>
-          {installError.retryable ? (
-            <button
-              type="button"
-              onClick={handleRetry}
-              className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"
-            >
-              Retry
-            </button>
-          ) : (
-            <p className="text-xs text-zinc-500">Fix the issue externally, then restart Noxio to try again.</p>
-          )}
-        </div>
-      )}
-
-      {!installError && (
-        <div className="w-5 h-5 border-2 border-violet-600/40 border-t-violet-600 rounded-full animate-spin" />
-      )}
+      {/* Pinned footer — always visible */}
+      <div className="flex-shrink-0 pb-8 pt-4 w-full max-w-sm mx-auto">
+        {installError && (
+          <div className="rounded-lg border border-red-800/40 bg-red-900/10 p-4 space-y-3">
+            <p className="text-sm text-red-400">{installError.message}</p>
+            {installError.retryable ? (
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"
+              >
+                Retry
+              </button>
+            ) : (
+              <p className="text-xs text-zinc-500">Fix the issue externally, then restart Noxio to try again.</p>
+            )}
+          </div>
+        )}
+        {!installError && (
+          <div className="flex justify-center">
+            <div className="w-5 h-5 border-2 border-violet-600/40 border-t-violet-600 rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

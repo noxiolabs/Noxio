@@ -19,6 +19,7 @@ import StatusBar from './components/StatusBar';
 import ChatPanel from './pages/Chat';
 import CreatePanel from './pages/Create';
 import ErrorBoundary from './components/ErrorBoundary';
+import SettingsOverlay from './components/SettingsOverlay';
 
 /** Placeholder shown for panels not yet implemented. */
 function ComingSoon({ label }) {
@@ -98,6 +99,9 @@ export default function App() {
 
         <StatusBar />
       </div>
+
+      {/* Settings overlay — sits above the full app shell */}
+      <SettingsOverlay />
     </ErrorBoundary>
   );
 }
