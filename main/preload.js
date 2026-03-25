@@ -17,13 +17,16 @@ const { contextBridge, ipcRenderer } = require('electron');
  * Any channel not in this list is silently ignored.
  */
 const VALID_RECEIVE_CHANNELS = [
-  'service-status',    // { service: string, status: string, pid: number|null }
-  'stream-token',      // token: string
-  'stream-complete',   // void
-  'install-progress',  // { step: string, percent: number, message: string }
-  'mode-ready',        // mode: string
-  'vram-update',       // { usedGB: number, availableGB: number }
-  'download-progress', // { model: string, percent: number }
+  'service-status',           // { service: string, status: string, pid: number|null }
+  'stream-token',             // token: string
+  'stream-complete',          // void
+  'install-progress',         // { step: string, percent: number, message: string }
+  'install-error',            // { step: string, message: string, retryable: boolean }
+  'install-service-complete', // { service: string, executablePath: string|null }
+  'mode-ready',               // mode: string
+  'vram-update',              // { usedGB: number, availableGB: number }
+  'download-progress',        // { model: string, percent: number }
+  'image-progress',           // percent: number (0–100) — emitted during image generation
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -43,11 +46,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /**
    * Switches the active mode (chat | create | voice | agent | gaming).
+   * Triggers VRAM orchestration in the main process.
    * Result arrives via 'mode-ready' event.
-   * @param {string} mode
+   * @param {string} targetMode - Mode to switch to
+   * @param {string} currentMode - Currently active mode (needed for VRAM decisions)
    * @returns {Promise<void>}
    */
-  switchMode: (mode) => ipcRenderer.invoke('switch-mode', mode),
+  switchMode: (targetMode, currentMode) =>
+    ipcRenderer.invoke('switch-mode', { targetMode, currentMode }),
+
+  /**
+   * Checks whether required and recommended prerequisites are installed.
+   * Returns a map of { ok, required, label, note, link } per requirement.
+   * @returns {Promise<Record<string, {ok: boolean, required: boolean, label: string, note: string, link: string|null}>>}
+   */
+  checkPrerequisites: () => ipcRenderer.invoke('check-prerequisites'),
+
+  /**
+   * Returns enriched hardware info for the setup wizard (VRAM tier, capability flags).
+   * @returns {Promise<WizardHardware>}
+   */
+  scanWizardHardware: () => ipcRenderer.invoke('scan-wizard-hardware'),
 
   /**
    * Returns model recommendations based on selected capabilities and available VRAM.
@@ -59,21 +78,67 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /**
    * Starts the installation sequence. Progress arrives via 'install-progress' events.
+   * Errors arrive via 'install-error' events.
+   * Service completions arrive via 'install-service-complete' events.
    * @param {InstallConfig} config
-   * @returns {Promise<void>}
+   * @returns {Promise<{success: boolean}>}
    */
   startInstallation: (config) => ipcRenderer.invoke('start-installation', config),
 
   /**
-   * Sends a chat message. Response tokens arrive via 'stream-token' events,
-   * completion via 'stream-complete'.
-   * @param {string} message
+   * Returns available filesystem drives with size information.
+   * @returns {Promise<Array<{letter: string, label: string, totalGB: number, freeGB: number}>>}
+   */
+  getAvailableDrives: () => ipcRenderer.invoke('get-available-drives'),
+
+  /**
+   * Validates that a directory is writable and has sufficient free space (25 GB).
+   * @param {string} dir - Absolute path to validate
+   * @returns {Promise<{ok: boolean, reason: string|null, freeGB: number}>}
+   */
+  validateInstallDir: (dir) => ipcRenderer.invoke('validate-install-dir', { dir }),
+
+  /**
+   * Returns the recommended default install directory (E:\Noxio or %LOCALAPPDATA%\Noxio).
+   * @returns {Promise<{dir: string}>}
+   */
+  getDefaultInstallDir: () => ipcRenderer.invoke('get-default-install-dir'),
+
+  /**
+   * Opens a native folder picker dialog so the user can choose an install location.
+   * @returns {Promise<{dir: string|null}>}
+   */
+  pickInstallDirectory: () => ipcRenderer.invoke('pick-install-directory'),
+
+  /**
+   * Returns resume data for a partially completed installation.
+   * @returns {Promise<{installedServices: Object, servicePaths: Object, installDir: string|null}>}
+   */
+  checkInstallResume: () => ipcRenderer.invoke('check-install-resume'),
+
+  /**
+   * Marks setup as complete in electron-store so the wizard is skipped on next launch.
+   * Must be called by ReadyScreen before dispatching completeSetup() to Redux.
+   * @returns {Promise<void>}
+   */
+  completeSetup: () => ipcRenderer.invoke('complete-setup'),
+
+  /**
+   * Returns all locally available Ollama models.
+   * @returns {Promise<Array<{name: string, size: number, modifiedAt: string}>>}
+   */
+  listModels: () => ipcRenderer.invoke('list-models'),
+
+  /**
+   * Sends the full conversation messages array to the LLM. Response tokens
+   * arrive via 'stream-token' events, completion via 'stream-complete'.
+   * @param {Array<{role: string, content: string}>} messages - Full conversation history
    * @param {string} model
    * @param {string} conversationId
    * @returns {Promise<void>}
    */
-  sendChatMessage: (message, model, conversationId) =>
-    ipcRenderer.invoke('send-chat-message', { message, model, conversationId }),
+  sendChatMessage: (messages, model, conversationId) =>
+    ipcRenderer.invoke('send-chat-message', { messages, model, conversationId }),
 
   /**
    * Stops an active streaming response.

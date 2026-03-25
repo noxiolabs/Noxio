@@ -59,6 +59,41 @@ const initialState = {
     coding: null,
     image: null,
   },
+
+  /**
+   * Root directory chosen by the user during setup for ComfyUI, venvs, and models.
+   * Null until the user confirms in the wizard InstallDir screen.
+   */
+  installDir: null,
+
+  /**
+   * Filesystem paths to each installed service's launch executable or script.
+   * Persisted to electron-store so process-manager can resolve them on next launch.
+   */
+  servicePaths: {
+    comfyui:  null,
+    litellm:  null,
+    whisper:  null,
+    kokoro:   null,
+  },
+
+  /**
+   * Tracks which services have been successfully installed.
+   * Used to skip already-installed steps on resume and to gate service startup.
+   */
+  installedServices: {
+    ollama:   false,
+    comfyui:  false,
+    litellm:  false,
+    whisper:  false,
+    kokoro:   false,
+  },
+
+  /**
+   * Capabilities the user selected during the wizard (e.g. ['chat', 'coding', 'voice']).
+   * Used to determine which services to start and which install steps to run.
+   */
+  selectedCapabilities: [],
 };
 
 const settingsSlice = createSlice({
@@ -80,9 +115,16 @@ const settingsSlice = createSlice({
      */
     updateCloudProvider(state, action) {
       const { provider, config } = action.payload;
-      if (state.cloudProviders[provider]) {
-        Object.assign(state.cloudProviders[provider], config);
+      if (!state.cloudProviders[provider]) return;
+      const sanitised = { ...config };
+      // Guard: budget and usage must never be negative
+      if (sanitised.monthlyBudgetUSD !== undefined) {
+        sanitised.monthlyBudgetUSD = Math.max(0, Number(sanitised.monthlyBudgetUSD) || 0);
       }
+      if (sanitised.usedUSD !== undefined) {
+        sanitised.usedUSD = Math.max(0, Number(sanitised.usedUSD) || 0);
+      }
+      Object.assign(state.cloudProviders[provider], sanitised);
     },
 
     /**
@@ -117,10 +159,61 @@ const settingsSlice = createSlice({
         state.models[capability] = model;
       }
     },
+
+    /**
+     * Sets the root install directory chosen by the user in the wizard.
+     * @param {Object} action.payload - The absolute directory path string
+     */
+    setInstallDir(state, action) {
+      state.installDir = action.payload ?? null;
+    },
+
+    /**
+     * Records the filesystem path for a specific installed service.
+     * @param {Object} action.payload
+     * @param {'comfyui'|'litellm'|'whisper'|'kokoro'} action.payload.service
+     * @param {string} action.payload.executablePath
+     */
+    setServicePath(state, action) {
+      const { service, executablePath } = action.payload;
+      if (service in state.servicePaths) {
+        state.servicePaths[service] = executablePath ?? null;
+      }
+    },
+
+    /**
+     * Marks a service as successfully installed.
+     * @param {Object} action.payload
+     * @param {'ollama'|'comfyui'|'litellm'|'whisper'|'kokoro'} action.payload.service
+     * @param {boolean} [action.payload.installed=true]
+     */
+    markServiceInstalled(state, action) {
+      const { service, installed = true } = action.payload;
+      if (service in state.installedServices) {
+        state.installedServices[service] = installed;
+      }
+    },
+
+    /**
+     * Sets the capabilities selected by the user during the wizard.
+     * @param {Object} action.payload - Array of capability strings e.g. ['chat', 'coding']
+     */
+    setSelectedCapabilities(state, action) {
+      state.selectedCapabilities = Array.isArray(action.payload) ? [...action.payload] : [];
+    },
   },
 });
 
-export const { completeSetup, updateCloudProvider, updateCloudUsage, updateRouting, setModel } =
-  settingsSlice.actions;
+export const {
+  completeSetup,
+  updateCloudProvider,
+  updateCloudUsage,
+  updateRouting,
+  setModel,
+  setInstallDir,
+  setServicePath,
+  markServiceInstalled,
+  setSelectedCapabilities,
+} = settingsSlice.actions;
 
 export default settingsSlice.reducer;

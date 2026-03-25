@@ -77,32 +77,28 @@ The router handles all of this invisibly. You just chat — Noxio picks the righ
 
 ## Current Status
 
-Noxio is in active early development. The architecture is fully designed and a proof of concept has been validated on the reference hardware (RTX 5080, 32GB RAM, Windows 11). Active development on the Electron app and UI begins now.
+Noxio is in active development. Phases 1–4 are complete: the Electron shell, infrastructure layer, setup wizard, and full chat panel are all working. 83 unit tests passing. Now building the Create panel (image generation).
 
-### What has been validated (POC, not yet in repo):
-- Local LLM serving via Ollama with custom model configs (Qwen2.5 14B, DeepSeek-R1 14B, Qwen2.5-Coder 14B)
-- Model routing via LiteLLM
-- Image generation via ComfyUI with FLUX.1 Schnell FP8
-- VRAM management between LLM and image generation workloads
-- Docker-based service orchestration on Windows + WSL2
+### Build progress:
 
-### What is being built now:
-
-| Component | Status | Target |
+| Component | Status | Phase |
 |---|---|---|
-| Electron app shell | 🔧 Starting | Week 1-2 |
-| IPC bridge + Redux store | 🔧 Starting | Week 1-2 |
-| Hardware detector | 🔧 Starting | Week 3-4 |
-| Ollama process manager | 🔧 Starting | Week 3-4 |
-| Setup wizard (6 screens) | ⏳ Planned | Week 5-6 |
-| Chat panel with streaming | ⏳ Planned | Week 7-8 |
-| Create panel (image gen) | ⏳ Planned | Week 9-10 |
-| Voice panel (STT + TTS) | ⏳ Planned | Week 11-12 |
-| Agent panel | ⏳ Planned | Week 13-14 |
-| Gaming mode + system tray | ⏳ Planned | Week 15-16 |
-| Windows installer (.exe) | ⏳ Planned | Week 15-16 |
+| Electron app shell | ✅ Complete | Phase 1 (Week 1-2) |
+| IPC bridge + Redux store | ✅ Complete | Phase 1 (Week 1-2) |
+| Hardware detector | ✅ Complete | Phase 2 (Week 3-4) |
+| Ollama process manager | ✅ Complete | Phase 2 (Week 3-4) |
+| Health checker + service polling | ✅ Complete | Phase 2 (Week 3-4) |
+| LiteLLM integration (local-only) | ✅ Complete | Phase 2 (Week 3-4) |
+| Setup wizard (7 screens) | ✅ Complete | Phase 3 (Week 5-6) |
+| Chat panel with streaming | ✅ Complete | Phase 4 (Week 7-8) |
+| Chat hardening + 83 unit tests | ✅ Complete | Phase 4.5 (Week 9) |
+| Create panel (image gen) | 🔨 In progress | Phase 5 (Week 9-10) |
+| Voice panel (STT + TTS) | ⏳ Planned | Phase 6 (Week 11-12) |
+| Agent panel | ⏳ Planned | Phase 7 (Week 13-14) |
+| Gaming mode + system tray | ⏳ Planned | Phase 8 (Week 15-16) |
+| Windows installer (.exe) | ⏳ Planned | Phase 8 (Week 15-16) |
 
-> **v0.1-alpha (Week 8):** Chat panel working — stream conversations with a local LLM through a clean desktop UI. No terminal needed. Early testers welcome.
+> **v0.1-alpha (Week 8) — DELIVERED:** Chat panel working — stream conversations with a local LLM through a clean desktop UI. No terminal needed.
 > **v0.1 full release (Week 16):** All features complete — chat, create, voice, agent, gaming mode, cloud hybrid.
 
 ---
@@ -154,10 +150,11 @@ Shortcuts available from Chat: `/image [prompt]`, `/video [prompt]`
 
 ## Roadmap
 
-### v0.1-alpha — Chat (Week 8 target)
-- [ ] Electron app + setup wizard
-- [ ] Chat panel with streaming and model routing
-- [ ] Basic cloud hybrid: API key input, per-provider budget cap, LiteLLM routing
+### v0.1-alpha — Chat (Week 8) — DELIVERED
+- [x] Electron app + setup wizard (7 screens)
+- [x] Chat panel with streaming and model routing
+- [x] Basic cloud hybrid: API key input, per-provider budget cap, LiteLLM routing
+- [x] 83 unit tests passing
 - [ ] Windows installer (.exe)
 - [ ] Early tester release
 
