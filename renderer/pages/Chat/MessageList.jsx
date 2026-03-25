@@ -13,15 +13,26 @@ export default function MessageList() {
   const activeId         = useSelector((s) => s.chat.activeConversationId);
   const streaming        = useSelector((s) => s.chat.streaming);
   const streamingMsgId   = useSelector((s) => s.chat.streamingMessageId);
-  const bottomRef        = useRef(null);
+  const containerRef     = useRef(null);
 
   const conversation = conversations.find((c) => c.id === activeId);
   const messages = conversation?.messages ?? [];
 
-  // Auto-scroll to bottom while streaming and on new messages
+  // Track the length of the currently streaming message so the scroll effect
+  // fires on every new token, not just when messages.length changes.
+  const streamingContentLength = useSelector((s) => {
+    if (!s.chat.streamingMessageId) return 0;
+    const conv = s.chat.conversations.find((c) => c.id === s.chat.activeConversationId);
+    const msg = conv?.messages.find((m) => m.id === s.chat.streamingMessageId);
+    return msg?.content?.length ?? 0;
+  });
+
+  // Scroll to bottom on new messages (smooth) and on every streaming token (instant).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, streaming]);
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages.length, streaming, streamingContentLength]);
 
   if (messages.length === 0) {
     return (
@@ -36,7 +47,7 @@ export default function MessageList() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+    <div ref={containerRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
       {messages.map((msg) => (
         <MessageBubble
           key={msg.id}
@@ -44,7 +55,6 @@ export default function MessageList() {
           isStreaming={streaming && msg.id === streamingMsgId}
         />
       ))}
-      <div ref={bottomRef} />
     </div>
   );
 }

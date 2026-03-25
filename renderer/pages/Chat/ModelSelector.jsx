@@ -15,6 +15,7 @@ import { setSelectedModel } from '../../store/slices/chat';
 export default function ModelSelector({ conversationId }) {
   const dispatch = useDispatch();
   const selectedModel = useSelector((s) => s.chat.selectedModel);
+  const ollamaStatus = useSelector((s) => s.infrastructure.services.ollama?.status);
   const [models, setModels] = useState([]);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -22,24 +23,32 @@ export default function ModelSelector({ conversationId }) {
   // never fires a second time if selectedModel changes after auto-select.
   const loadedRef = useRef(false);
 
+  async function load() {
+    if (!window.electronAPI) return;
+    const list = await window.electronAPI.listModels();
+    if (list?.length) {
+      setModels(list);
+      // Auto-select first model if nothing is selected yet
+      if (!selectedModel) {
+        dispatch(setSelectedModel(list[0].name));
+      }
+    }
+  }
+
   // Fetch available models once on mount
   useEffect(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;
-
-    async function load() {
-      if (!window.electronAPI) return;
-      const list = await window.electronAPI.listModels();
-      if (list?.length) {
-        setModels(list);
-        // Auto-select first model if nothing is selected yet
-        if (!selectedModel) {
-          dispatch(setSelectedModel(list[0].name));
-        }
-      }
-    }
     load();
   }, [dispatch, selectedModel]);
+
+  // If the initial fetch returned nothing (Ollama was still starting up),
+  // retry automatically once Ollama transitions to 'running'.
+  useEffect(() => {
+    if (ollamaStatus === 'running' && models.length === 0) {
+      load();
+    }
+  }, [ollamaStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -60,7 +69,13 @@ export default function ModelSelector({ conversationId }) {
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          // Refresh model list every time the dropdown is opened so we always
+          // show up-to-date models and recover from any failed initial fetch.
+          if (next) load();
+        }}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/50 text-zinc-300 text-xs transition-colors"
       >
         <span className="max-w-[160px] truncate">{label}</span>

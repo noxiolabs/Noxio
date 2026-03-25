@@ -35,6 +35,7 @@ export default function ChatPanel() {
   const cloudProvider = useSelector((s) => s.chat.cloudProvider);
   const [input, setInput]         = useState('');
   const [streamError, setStreamError] = useState('');
+  const prevStreamingRef = useRef(false);
 
   const activeConversation = conversations.find((c) => c.id === activeId);
 
@@ -44,12 +45,23 @@ export default function ChatPanel() {
   const STREAM_TIMEOUT_MS = 60_000;
 
   useEffect(() => {
-    if (!streaming) {
-      // Stream finished normally — clear any pending timeout
+    if (prevStreamingRef.current && !streaming) {
+      // Stream just finished — clear any pending timeout
       clearTimeout(streamTimeoutRef.current);
       streamTimeoutRef.current = null;
+
+      // Detect empty assistant response: Ollama may have been loading the model
+      // and returned an error before sending any tokens.
+      const conv = conversations.find((c) => c.id === activeId);
+      if (conv) {
+        const last = conv.messages[conv.messages.length - 1];
+        if (last?.role === 'assistant' && !last.content.trim()) {
+          setStreamError('No response received. Ollama may still be loading the model — please try again in a moment.');
+        }
+      }
     }
-  }, [streaming]);
+    prevStreamingRef.current = streaming;
+  }, [streaming, conversations, activeId]);
 
   function handleSend() {
     setStreamError('');

@@ -25,6 +25,16 @@ export default function ChatInput({ value, onChange, onSend, onStop }) {
   const forceCloud    = useSelector((s) => s.chat.forceCloud);
   const cloudProviders = useSelector((s) => s.settings.cloudProviders);
   const textareaRef   = useRef(null);
+  const prevStreamingRef = useRef(false);
+
+  // Auto-focus the textarea when a stream finishes so the user can immediately
+  // type their next message without clicking.
+  useEffect(() => {
+    if (prevStreamingRef.current && !streaming) {
+      textareaRef.current?.focus();
+    }
+    prevStreamingRef.current = streaming;
+  }, [streaming]);
 
   // Determine the first enabled cloud provider for the badge label
   const firstEnabledProvider = cloudProviders
