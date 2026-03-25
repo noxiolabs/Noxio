@@ -11,6 +11,7 @@ import chatReducer from './slices/chat';
 import createReducer from './slices/create';
 import voiceReducer from './slices/voice';
 import settingsReducer from './slices/settings';
+import manifestReducer from './slices/manifest';
 import { ipcMiddleware } from './middleware/ipc-middleware';
 
 export const store = configureStore({
@@ -20,6 +21,7 @@ export const store = configureStore({
     create: createReducer,
     voice: voiceReducer,
     settings: settingsReducer,
+    manifest: manifestReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

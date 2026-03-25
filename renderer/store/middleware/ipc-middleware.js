@@ -15,8 +15,11 @@ import {
   updateServiceStatus,
   updateVram,
   setCurrentMode,
+  setLastRouting,
 } from '../slices/infrastructure';
 import { appendStreamToken, finaliseStream } from '../slices/chat';
+import { setManifest } from '../slices/manifest';
+import { setPullProgress, clearPullProgress } from '../slices/settings';
 
 /**
  * Sets up all main→renderer IPC event listeners and wires them to Redux actions.
@@ -54,6 +57,46 @@ export function setupIpcListeners(store) {
   /** mode-ready → infrastructure.setCurrentMode */
   api.on('mode-ready', (mode) => {
     store.dispatch(setCurrentMode(mode));
+  });
+
+  /**
+   * routing-decision → infrastructure.setLastRouting
+   * Emitted by the main process at the start of each chat stream with
+   * { provider, model, conversationId }. Only provider and model are needed here.
+   */
+  api.on('routing-decision', ({ provider, model } = {}) => {
+    store.dispatch(setLastRouting({ provider, model }));
+  });
+
+  /** manifest-verified → manifest.setManifest */
+  api.on('manifest-verified', (data) => {
+    if (data) store.dispatch(setManifest(data));
+  });
+
+  /**
+   * model-pull-progress → settings.setPullProgress
+   * Emitted periodically during an Ollama model pull with { model, percent }.
+   */
+  api.on('model-pull-progress', (data) => {
+    if (data) store.dispatch(setPullProgress(data));
+  });
+
+  /**
+   * model-pull-complete → settings.clearPullProgress
+   * Emitted when a pull finishes successfully. Clears transient pull state.
+   * The ModelsSection component is responsible for refreshing its model list.
+   */
+  api.on('model-pull-complete', () => {
+    store.dispatch(clearPullProgress());
+  });
+
+  /**
+   * model-pull-error → settings.clearPullProgress
+   * Emitted when a pull fails. Clears transient pull state so the UI unblocks.
+   * The ModelsSection component surfaces the error via its own local state.
+   */
+  api.on('model-pull-error', () => {
+    store.dispatch(clearPullProgress());
   });
 
   // install-progress and download-progress are handled directly by the wizard

@@ -77,7 +77,7 @@ The router handles all of this invisibly. You just chat — Noxio picks the righ
 
 ## Current Status
 
-Noxio is in active development. Phases 1–4 are complete: the Electron shell, infrastructure layer, setup wizard, and full chat panel are all working. 83 unit tests passing. Now building the Create panel (image generation).
+Noxio is in active development. Phases 1–5 are complete: the Electron shell, infrastructure layer, setup wizard, full chat panel, image generation (FLUX via ComfyUI), and the real service installer are all working on reference hardware. 83 unit tests passing.
 
 ### Build progress:
 
@@ -92,14 +92,14 @@ Noxio is in active development. Phases 1–4 are complete: the Electron shell, i
 | Setup wizard (7 screens) | ✅ Complete | Phase 3 (Week 5-6) |
 | Chat panel with streaming | ✅ Complete | Phase 4 (Week 7-8) |
 | Chat hardening + 83 unit tests | ✅ Complete | Phase 4.5 (Week 9) |
-| Create panel (image gen) | 🔨 In progress | Phase 5 (Week 9-10) |
+| Create panel (image gen via FLUX) | ✅ Complete | Phase 5 (Week 9-10) |
+| Real service installer pipeline | ✅ Complete | Phase 5 (Week 9-10) |
 | Voice panel (STT + TTS) | ⏳ Planned | Phase 6 (Week 11-12) |
-| Agent panel | ⏳ Planned | Phase 7 (Week 13-14) |
 | Gaming mode + system tray | ⏳ Planned | Phase 8 (Week 15-16) |
 | Windows installer (.exe) | ⏳ Planned | Phase 8 (Week 15-16) |
 
 > **v0.1-alpha (Week 8) — DELIVERED:** Chat panel working — stream conversations with a local LLM through a clean desktop UI. No terminal needed.
-> **v0.1 full release (Week 16):** All features complete — chat, create, voice, agent, gaming mode, cloud hybrid.
+> **v0.1 full release (Week 16):** Chat, create, voice, gaming mode, cloud hybrid.
 
 ---
 

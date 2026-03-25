@@ -9,10 +9,12 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - POC validated on reference hardware (RTX 5080, Windows 11)
 - GitHub repo created: github.com/noxiolabs/Noxio
 - README, LICENSE (AGPL-3.0), topics, Discussions all live on GitHub
-- **Phases 1–4 complete** — Chat panel fully working with streaming, conversation history, model selector, markdown rendering
+- **Phases 1–5 complete** — Chat panel, Create panel (image generation), and real service installer all working
+- **Image generation confirmed working** on RTX 5080 (Blackwell sm_100) with CUDA 12.8 / ComfyUI cu128
 - **83 unit tests passing**
+- Phase 5 PR merged to main
 - Target: **v0.1-alpha (chat only) — DELIVERED**, v0.1 full release by end of Week 16
-- Current week: **Week 9**
+- Current week: **Week 10**
 
 ---
 
@@ -88,23 +90,33 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - [x] Error boundaries added to renderer
 - [x] 83 unit tests written and passing
 
+### Phase 5 — Create Panel + Real Installer (Weeks 9–10) ✅ COMPLETE
+
+- [x] `main/services/comfyui.js` — start ComfyUI process, call image gen API, stream progress
+- [x] `main/infrastructure/orchestrator.js` — VRAM orchestration: pause Ollama before starting ComfyUI, resume after
+- [x] IPC: `generate-image` handler
+- [x] Create panel UI: prompt input, style presets (photorealistic / artistic / abstract / anime), quality slider
+- [x] Output gallery: display generated images, allow save
+- [x] VRAM auto-management wired: Chat → Create triggers orchestrator
+- [x] Real service installer pipeline — Ollama silent install, ComfyUI cu128 portable zip, FLUX model download, per-service Python venvs (LiteLLM, Whisper, Kokoro)
+- [x] Installer UI — location picker, step list, progress bar
+- [x] ComfyUI routes abstract/anime styles through FLUX when SDXL not installed
+- [x] Fix: upgrade ComfyUI PyTorch to cu128 for Blackwell (sm_100) GPU
+
 ---
 
 ## Active Sprint
 
-**Week 9: Phase 5 — Create Panel (Image Generation)**
+**Week 10: Pre-Phase 6 Hardening**
 
-### Phase 5 — Create Panel (Weeks 9–10)
+### Pre-Phase 6 Hardening
 
-- [ ] `main/services/comfyui.js` — start ComfyUI process, call image gen API, stream progress
-- [ ] `main/infrastructure/orchestrator.js` — VRAM orchestration: pause Ollama before starting ComfyUI, resume after
-- [ ] IPC: `generate-image` handler
-- [ ] Create panel UI: prompt input, style presets (photorealistic / artistic / abstract / anime), quality slider
-- [ ] Output gallery: display generated images, allow save
-- [ ] VRAM auto-management wired: Chat → Create triggers orchestrator
-- [ ] Test: generate image while chat is loaded → Ollama pauses → image generates → Ollama resumes
-- [ ] **Wizard: model swap dropdown** — ModelsScreen currently only shows the recommended model. Add a dropdown per capability so the user can pick from all compatible models for their VRAM tier. (Spec says "swap option" — not built in Phase 3.)
-- [ ] **Wizard: cloud API key input** — ModelsScreen has no UI for entering cloud provider API keys (OpenAI, Anthropic, Google). The spec calls for this on the Models screen. Deferred to Phase 5 alongside full cloud routing.
+- [x] Documentation update — CLAUDE.md vision/positioning, TASKS.md, README status table
+- [x] Model swap dropdown — wizard ModelsScreen: per-capability dropdown, alternatives computed from equal-or-lower VRAM tiers, total size updates live
+- [x] Settings panel — gear icon in Sidebar, full-screen overlay, 6 sections (Models, Cloud, Routing, Voice, Chat, Appearance), 9 IPC channels, Redux slice extended
+- [x] Hardware/model dynamism audit — detection is fully dynamic; CUDA cu126 is backwards-compatible across all NVIDIA cards; CLAUDE.md corrected
+- [x] InstallingScreen responsive fix — 3-zone layout (pinned header+progress, scrollable steps, pinned footer); all other wizard screens get overflow-y-auto
+- [x] Dependency/install state tracking — manifest.js module, electron-store manifest key, startup verification pass, 2 IPC channels, manifest Redux slice
 
 ### Phase 6 — Voice Panel (Weeks 11–12)
 
@@ -115,14 +127,11 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - [ ] Redux `voice` slice: recording state, transcript
 - [ ] Test: push to talk → transcription → LLM response → Kokoro speaks response
 
-### Phase 7 — Agent Panel (Weeks 13–14)
+### Phase 7 — Agent Panel ⏸ DEFERRED
 
-- [ ] Decide agent framework (OpenClaw vs Open Interpreter vs custom) — document decision in CLAUDE.md
-- [ ] Agent process manager in `main/`
-- [ ] IPC channels for agent: start goal, stream execution log, stop agent
-- [ ] Agent panel UI: goal input, execution log (scrolling), workspace file viewer
-- [ ] Tool permission model: user explicitly grants each tool type (file read, file write, web, etc.)
-- [ ] Sandboxed workspace directory — agent confined to this folder by default
+The agentic space is moving fast (Claude tool use, GPT Actions, Model Context Protocol, etc.). Noxio's role is to be the **local runtime that complements these tools** — not to build a competing agent. We will revisit once the ecosystem stabilises and a clear, complementary integration path is defined.
+
+No work on Phase 7 until the owner decides the integration strategy.
 
 ### Phase 8 — Polish + Launch (Weeks 15–16)
 

@@ -21,6 +21,20 @@ A local-first AI desktop application. One app replaces ChatGPT, Midjourney, Elev
 
 ---
 
+## Product Positioning (Updated March 2026)
+
+Noxio is a **local AI environment**, not an AI agent platform.
+
+The goal is to be the infrastructure layer that makes local AI accessible and usable — alongside cloud AI tools, not competing with them. Claude, GPT, and future AI tools are the agents. Noxio is the local runtime they can connect to and use. Think of it as "localhost for AI": a single place where LLMs, image generation, voice, and future capabilities run privately on the user's hardware, ready to be used by any tool or workflow.
+
+**What this means in practice:**
+- Noxio replaces the need for ChatGPT/Midjourney/ElevenLabs subscriptions for users who want to run things locally
+- Noxio does not try to out-agent Claude Code, GPT Actions, or similar tools
+- Future integration work will focus on making Noxio's local services *accessible to* external agents (MCP server, local API surface) rather than building a competing agent runtime
+- The Agent panel is **deferred indefinitely** — the agentic ecosystem is moving fast and the right complementary role will become clearer over time
+
+---
+
 ## Hybrid Cloud Routing (Critical — Read Before Touching Settings or LiteLLM)
 
 Noxio is local-first but has a full hybrid routing layer. This is a core product feature, not an afterthought.
@@ -555,7 +569,7 @@ Facts that are not derivable from git log and aren't obvious from reading the co
 
 **Confirmed download URLs (ollama-installer.js, service-installer.js)**
 - Ollama installer: `https://ollama.com/download/OllamaSetup.exe` — uses NSIS `/S` flag for silent unattended install
-- ComfyUI portable zip: `https://github.com/comfyanonymous/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia_cu128.zip` — the `cu128` variant is required for CUDA 12.8 (RTX 5080 / Blackwell)
+- ComfyUI portable zip: `https://github.com/Comfy-Org/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia_cu126.7z` — uses `cu126` (CUDA 12.6), not `cu128`. This is deliberate: a `cu128` portable zip is not yet available; `cu126` runs on Blackwell and all NVIDIA cards via CUDA's backwards-compatibility guarantee. Upgrade to `cu128` only when Comfy-Org publishes that variant.
 - FLUX.1-schnell fp8 model: `https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors` — minimum expected size is 9 GB; files smaller than this are treated as corrupt and re-downloaded
 
 **`.part` file pattern for large downloads (service-installer.js)**
@@ -617,9 +631,9 @@ A feature is done when:
 
 ## Open Questions (Resolve During Development)
 
-- **Agent framework** — OpenClaw vs Open Interpreter vs custom. Evaluate sandboxing, tool access API, Windows support, active maintenance.
-- **ComfyUI integration** — Option A: React UI calling ComfyUI API (full control). Option B: embed ComfyUI with locked pre-loaded workflow (faster). Option C: different image gen backend.
-- **VRAM auto-management implementation** — Exact logic for pause/resume timing, error handling, race conditions.
+- **Agent framework** — ~~OpenClaw vs Open Interpreter vs custom~~ **DEFERRED.** See Product Positioning section. Noxio is not building a competing agent runtime. Future work is integration (MCP server, local API surface for external agents), not a standalone agent panel.
+- **ComfyUI integration** — **RESOLVED:** Option A (React UI calling ComfyUI API). Implemented in Phase 5. React UI calls ComfyUI's queue/prompt API directly; ComfyUI runs as a background process managed by process-manager.js.
+- **VRAM auto-management implementation** — **RESOLVED:** Orchestrator pauses Ollama before starting ComfyUI, resumes after image generation completes. Implemented in `main/infrastructure/orchestrator.js`.
 - **Website** — noxiolabs.dev needs at least a landing page.
 - **Twitter/X @noxiolabs** — Waiting on domain email setup first.
 

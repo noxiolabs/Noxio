@@ -19,7 +19,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { nanoid } from '@reduxjs/toolkit';
-import { createConversation, sendMessage, finaliseStream } from '../../store/slices/chat';
+import { createConversation, sendMessage, finaliseStream, setForceCloud } from '../../store/slices/chat';
 import ConversationSidebar from './ConversationSidebar';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -31,6 +31,8 @@ export default function ChatPanel() {
   const activeId      = useSelector((s) => s.chat.activeConversationId);
   const selectedModel = useSelector((s) => s.chat.selectedModel);
   const streaming     = useSelector((s) => s.chat.streaming);
+  const forceCloud    = useSelector((s) => s.chat.forceCloud);
+  const cloudProvider = useSelector((s) => s.chat.cloudProvider);
   const [input, setInput]         = useState('');
   const [streamError, setStreamError] = useState('');
 
@@ -75,10 +77,21 @@ export default function ChatPanel() {
     dispatch(sendMessage({ content }));
     setInput('');
 
-    // Send to main process — tokens come back via 'stream-token' IPC events
+    // Send to main process — tokens come back via 'stream-token' IPC events.
+    // forceCloud and cloudProvider let the user override the router's local preference.
     if (window.electronAPI) {
-      window.electronAPI.sendChatMessage(messages, selectedModel, convId);
+      window.electronAPI.sendChatMessage({
+        message: content,
+        model: selectedModel,
+        conversationId: convId,
+        messages,
+        forceCloud,
+        cloudProvider,
+      });
     }
+
+    // Reset cloud override so the next message uses normal routing
+    dispatch(setForceCloud(false));
 
     // Guard against a hung stream (Ollama crash, network drop, etc.)
     clearTimeout(streamTimeoutRef.current);

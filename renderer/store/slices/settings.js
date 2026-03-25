@@ -19,22 +19,30 @@ const initialState = {
   /**
    * Cloud provider configuration.
    * apiKey is masked in the UI after saving (show last 4 chars only).
+   * apiKeySet: true if a key has been saved in the main process.
+   * apiKeyMasked: display string e.g. '••••••••abcd'.
    */
   cloudProviders: {
     openai: {
       apiKey: '',
+      apiKeySet: false,
+      apiKeyMasked: '',
       enabled: false,
       monthlyBudgetUSD: 0,
       usedUSD: 0,
     },
     anthropic: {
       apiKey: '',
+      apiKeySet: false,
+      apiKeyMasked: '',
       enabled: false,
       monthlyBudgetUSD: 0,
       usedUSD: 0,
     },
     google: {
       apiKey: '',
+      apiKeySet: false,
+      apiKeyMasked: '',
       enabled: false,
       monthlyBudgetUSD: 0,
       usedUSD: 0,
@@ -94,6 +102,50 @@ const initialState = {
    * Used to determine which services to start and which install steps to run.
    */
   selectedCapabilities: [],
+
+  /**
+   * UI appearance preferences. Reserved for future use — not yet applied to the UI.
+   * theme: colour scheme preference.
+   * fontSize: global font size scale.
+   */
+  ui: {
+    theme: 'dark',
+    fontSize: 'medium',
+  },
+
+  /**
+   * Voice feature settings.
+   * sttLanguage: BCP-47 language code or 'auto' for automatic detection.
+   * ttsVoice: Kokoro voice identifier.
+   */
+  voice: {
+    sttLanguage: 'auto',
+    ttsVoice: 'af_sky',
+  },
+
+  /**
+   * Chat panel settings.
+   * contextWindow: Ollama num_ctx value sent with each request.
+   * systemPrompt: Optional system message prepended to every conversation.
+   */
+  chat: {
+    contextWindow: 4096,
+    systemPrompt: '',
+  },
+
+  /**
+   * Transient settings panel UI state. NOT persisted to disk.
+   * open: whether the settings overlay is visible.
+   * activeSection: which tab is selected inside the overlay.
+   * pullInProgress: model name currently being pulled, or null.
+   * pullPercent: 0–100 progress for the active pull.
+   */
+  _settingsPanel: {
+    open: false,
+    activeSection: 'models',
+    pullInProgress: null,
+    pullPercent: 0,
+  },
 };
 
 const settingsSlice = createSlice({
@@ -201,6 +253,84 @@ const settingsSlice = createSlice({
     setSelectedCapabilities(state, action) {
       state.selectedCapabilities = Array.isArray(action.payload) ? [...action.payload] : [];
     },
+
+    /**
+     * Merges partial updates into the UI appearance preferences.
+     * @param {Object} action.payload - Partial ui object e.g. { theme: 'light' }
+     */
+    updateUI(state, action) {
+      Object.assign(state.ui, action.payload);
+    },
+
+    /**
+     * Merges partial updates into the voice settings.
+     * @param {Object} action.payload - Partial voice object e.g. { sttLanguage: 'en' }
+     */
+    updateVoiceSettings(state, action) {
+      Object.assign(state.voice, action.payload);
+    },
+
+    /**
+     * Merges partial updates into the chat settings.
+     * @param {Object} action.payload - Partial chat object e.g. { contextWindow: 8192 }
+     */
+    updateChatSettings(state, action) {
+      Object.assign(state.chat, action.payload);
+    },
+
+    /**
+     * Opens the settings overlay and navigates to the given section.
+     * @param {Object} action.payload - Section key string e.g. 'models'
+     */
+    openSettingsPanel(state, action) {
+      state._settingsPanel.open = true;
+      state._settingsPanel.activeSection = action.payload ?? 'models';
+    },
+
+    /**
+     * Closes the settings overlay. Active section is preserved for next open.
+     */
+    closeSettingsPanel(state) {
+      state._settingsPanel.open = false;
+    },
+
+    /**
+     * Updates the in-progress model pull state.
+     * @param {Object} action.payload
+     * @param {string} action.payload.model - Model name being pulled
+     * @param {number} action.payload.percent - Pull progress 0–100
+     */
+    setPullProgress(state, action) {
+      const { model, percent } = action.payload ?? {};
+      state._settingsPanel.pullInProgress = model ?? null;
+      state._settingsPanel.pullPercent = typeof percent === 'number' ? percent : 0;
+    },
+
+    /**
+     * Clears pull progress state once a pull finishes or errors out.
+     */
+    clearPullProgress(state) {
+      state._settingsPanel.pullInProgress = null;
+      state._settingsPanel.pullPercent = 0;
+    },
+
+    /**
+     * Updates the display state for a cloud provider's API key after saving.
+     * The actual key is stored in the main process; only the masked form is
+     * kept in Redux for display purposes.
+     * @param {Object} action.payload
+     * @param {'openai'|'anthropic'|'google'} action.payload.provider
+     * @param {boolean} action.payload.apiKeySet
+     * @param {string} action.payload.apiKeyMasked - e.g. '••••••••abcd'
+     */
+    setCloudApiKeySet(state, action) {
+      const { provider, apiKeySet, apiKeyMasked } = action.payload ?? {};
+      if (!provider || !state.cloudProviders[provider]) return;
+      state.cloudProviders[provider].apiKeySet = Boolean(apiKeySet);
+      state.cloudProviders[provider].apiKeyMasked = apiKeyMasked ?? '';
+      // Clear the plaintext key from state — it has been handed off to main
+      state.cloudProviders[provider].apiKey = '';
+    },
   },
 });
 
@@ -214,6 +344,14 @@ export const {
   setServicePath,
   markServiceInstalled,
   setSelectedCapabilities,
+  updateUI,
+  updateVoiceSettings,
+  updateChatSettings,
+  openSettingsPanel,
+  closeSettingsPanel,
+  setPullProgress,
+  clearPullProgress,
+  setCloudApiKeySet,
 } = settingsSlice.actions;
 
 export default settingsSlice.reducer;
