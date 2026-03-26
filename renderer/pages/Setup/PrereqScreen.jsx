@@ -1,13 +1,15 @@
 /**
  * @file PrereqScreen.jsx
- * @description Setup wizard — Screen 1. Checks that required and recommended
- * prerequisites are installed before proceeding. Shows a status row for each:
+ * @description Setup wizard — Screen 1. Checks prerequisites before proceeding.
+ * Shows a status row for each:
  *
  *   • Ollama        — Optional. Will be installed automatically if missing.
- *   • Python 3.11+  — Required when image or voice capabilities are selected.
+ *   • Python 3.11+  — Informational only. Noxio creates its own isolated venvs;
+ *                     system Python is not required.
  *   • NVIDIA GPU    — Informational. Local AI needs a GPU.
  *
- * Users can install missing items, then hit Retry without restarting Noxio.
+ * The Continue button is never blocked on Python — Noxio sets up its own
+ * Python environment under the user's chosen install directory.
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -25,6 +27,13 @@ function StatusIcon({ state }) {
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round">
           <polyline points="2,5 4,7 8,3" />
         </svg>
+      </div>
+    );
+  }
+  if (state === 'info') {
+    return (
+      <div className="w-5 h-5 rounded-full bg-blue-500/20 border border-blue-500/50 flex items-center justify-center flex-shrink-0">
+        <span className="text-blue-400 text-[10px] font-bold leading-none">i</span>
       </div>
     );
   }
@@ -52,6 +61,8 @@ function PrereqRow({ label, note, state, link, required }) {
     <div className={`flex items-start gap-3 p-3.5 rounded-lg border ${
       state === 'ok'
         ? 'border-zinc-800 bg-zinc-900/40'
+        : state === 'info'
+        ? 'border-blue-800/40 bg-blue-900/10'
         : state === 'warn'
         ? 'border-yellow-800/40 bg-yellow-900/10'
         : state === 'error'
@@ -104,17 +115,15 @@ export default function PrereqScreen({ onNext, selectedCapabilities = [] }) {
 
   useEffect(() => { runCheck(); }, [runCheck]);
 
-  const needsPython = selectedCapabilities.some((c) => ['image', 'voice'].includes(c));
-  const pythonOk    = !results || results.python?.ok === true;
-  const canProceed  = !checking && (!needsPython || pythonOk);
+  // Continue is never blocked on Python — Noxio installs its own venvs.
+  const canProceed  = !checking;
 
   const rowState = (key) => {
     if (checking || !results) return 'checking';
     const r = results[key];
     if (!r) return 'warn';
     if (r.ok) return 'ok';
-    if (key === 'ollama') return 'warn';
-    return r.required ? 'error' : 'warn';
+    return 'warn';
   };
 
   return (
@@ -134,17 +143,10 @@ export default function PrereqScreen({ onNext, selectedCapabilities = [] }) {
               ? 'Checking…'
               : results?.ollama?.ok
               ? (results.ollama.note ?? 'Found')
-              : 'Not installed — will be installed automatically'
+              : 'Ollama will be installed automatically — no action needed'
           }
-          state={rowState('ollama')}
+          state={results?.ollama?.ok ? 'ok' : checking ? 'checking' : 'info'}
           link={null}
-          required={false}
-        />
-        <PrereqRow
-          label={results?.python?.label ?? 'Python 3.11+'}
-          note={checking ? 'Checking…' : (results?.python?.note ?? '')}
-          state={rowState('python')}
-          link={results?.python?.link}
           required={false}
         />
         <PrereqRow
@@ -155,10 +157,9 @@ export default function PrereqScreen({ onNext, selectedCapabilities = [] }) {
           required={false}
         />
 
-        {!checking && !canProceed && needsPython && !pythonOk && (
-          <p className="text-xs text-red-400 text-center pt-1">
-            Python 3.11 or later is required for image and voice capabilities.
-            Download and install it, then click Retry.
+        {!checking && results && !results.gpu?.ok && (
+          <p className="text-xs text-zinc-500 text-center pt-1">
+            No NVIDIA GPU detected. Local AI requires a supported GPU to run.
           </p>
         )}
       </div>

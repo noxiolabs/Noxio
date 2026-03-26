@@ -32,6 +32,22 @@ export default class ErrorBoundary extends React.Component {
   render() {
     if (!this.state.hasError) return this.props.children;
 
+    // panel=true → scoped fallback that fits inside a panel without covering the sidebar/statusbar
+    if (this.props.panel) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+          <p className="text-base font-semibold text-red-400">This panel crashed</p>
+          <p className="text-xs text-zinc-600 max-w-sm font-mono">{this.state.message}</p>
+          <button
+            onClick={() => this.setState({ hasError: false, message: '' })}
+            className="mt-1 px-4 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition-colors"
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-[#0f0f11] text-zinc-100 gap-4 p-8 text-center">
         <p className="text-lg font-semibold text-red-400">Something went wrong</p>

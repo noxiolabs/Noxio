@@ -87,7 +87,18 @@ export default function ModelSelector({ conversationId }) {
       {open && (
         <div className="absolute top-full mt-1 left-0 z-50 min-w-[200px] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
           {models.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-zinc-500">No models found</p>
+            <div className="px-3 py-2 text-xs text-zinc-500">
+              <p>No models found.</p>
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  window.electronAPI?.openSettings?.('models');
+                }}
+                className="mt-1 text-violet-400 hover:text-violet-300 underline underline-offset-2"
+              >
+                Open Settings → Models to add one
+              </button>
+            </div>
           ) : (
             models.map((m) => (
               <button

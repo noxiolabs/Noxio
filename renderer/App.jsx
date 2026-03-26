@@ -7,7 +7,7 @@
  *   [Sidebar 60px] | [Active panel flex-1]
  *   [StatusBar 32px — full width]
  *
- * Phase 4: Chat panel live. Create / Voice / Agent show a "coming soon" placeholder.
+ * Chat and Create panels are live. Voice and Agent are coming in a future release.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -21,12 +21,12 @@ import CreatePanel from './pages/Create';
 import ErrorBoundary from './components/ErrorBoundary';
 import SettingsOverlay from './components/SettingsOverlay';
 
-/** Placeholder shown for panels not yet implemented. */
-function ComingSoon({ label }) {
+/** Placeholder shown for panels not yet released. */
+function ComingSoon({ label, description }) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
       <p className="text-zinc-400 font-medium">{label}</p>
-      <p className="text-zinc-700 text-sm">Coming in a future phase</p>
+      <p className="text-zinc-600 text-sm max-w-xs">{description ?? 'Coming in a future release'}</p>
     </div>
   );
 }
@@ -90,10 +90,10 @@ export default function App() {
           <Sidebar activeMode={activeMode} onModeChange={handleModeChange} />
 
           <main className="flex-1 overflow-hidden">
-            {activeMode === 'chat'   && <ChatPanel />}
-            {activeMode === 'create' && <CreatePanel />}
-            {activeMode === 'voice'  && <ComingSoon label="Voice" />}
-            {activeMode === 'agent'  && <ComingSoon label="Agent" />}
+            {activeMode === 'chat'   && <ErrorBoundary panel><ChatPanel /></ErrorBoundary>}
+            {activeMode === 'create' && <ErrorBoundary panel><CreatePanel /></ErrorBoundary>}
+            {activeMode === 'voice'  && <ComingSoon label="Voice" description="Voice input and output are coming in a future release." />}
+            {activeMode === 'agent'  && <ComingSoon label="Agent" description="Agent automation is coming in a future release." />}
           </main>
         </div>
 

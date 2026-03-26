@@ -34,6 +34,7 @@ const VALID_RECEIVE_CHANNELS = [
   'routing-decision',         // { provider: string, model: string, conversationId: string, fallbackReason?: string }
   'budget-warning',           // { provider: string, usedUSD: number, budgetUSD: number, percentUsed: number }
   'cloud-usage-update',       // { provider: string, usedUSD: number }
+  'open-settings',            // { section: string } — opens settings overlay from main process or external trigger
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -223,6 +224,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   saveChatSettings: (contextWindow, systemPrompt) =>
     ipcRenderer.invoke('save-chat-settings', { contextWindow, systemPrompt }),
+
+  /**
+   * Persists chat conversation history to electron-store.
+   * @param {{ conversations: Array }} payload
+   * @returns {Promise<{success: boolean}>}
+   */
+  saveChatHistory: (payload) => ipcRenderer.invoke('save-chat-history', payload),
+
+  /**
+   * Loads persisted chat conversation history from electron-store.
+   * @returns {Promise<{conversations: Array}|null>}
+   */
+  loadChatHistory: () => ipcRenderer.invoke('load-chat-history'),
+
+  /**
+   * Opens the settings overlay on a specific section tab.
+   * Dispatches openSettingsPanel action via the main window.
+   * @param {string} section - e.g. 'models', 'cloud', 'chat'
+   */
+  openSettings: (section) => ipcRenderer.invoke('open-settings', { section }),
 
   /**
    * Sends the full conversation messages array to the LLM. Response tokens

@@ -5,7 +5,7 @@
  * Active conversation is highlighted in violet.
  */
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   createConversation,
@@ -29,6 +29,16 @@ export default function ConversationSidebar() {
   const activeId       = useSelector((s) => s.chat.activeConversationId);
   const selectedModel  = useSelector((s) => s.chat.selectedModel);
   const streaming      = useSelector((s) => s.chat.streaming);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+  const confirmTimerRef = useRef(null);
+
+  // Auto-cancel pending delete confirm after 3 seconds
+  useEffect(() => {
+    if (confirmingDeleteId) {
+      confirmTimerRef.current = setTimeout(() => setConfirmingDeleteId(null), 3000);
+    }
+    return () => clearTimeout(confirmTimerRef.current);
+  }, [confirmingDeleteId]);
 
   function handleNew() {
     dispatch(createConversation({ model: selectedModel }));
@@ -36,7 +46,12 @@ export default function ConversationSidebar() {
 
   function handleDelete(e, id) {
     e.stopPropagation();
-    dispatch(deleteConversation(id));
+    if (confirmingDeleteId === id) {
+      dispatch(deleteConversation(id));
+      setConfirmingDeleteId(null);
+    } else {
+      setConfirmingDeleteId(id);
+    }
   }
 
   return (
@@ -79,16 +94,24 @@ export default function ConversationSidebar() {
                 <p className="text-[10px] text-zinc-600 mt-0.5">{relativeDate(conv.createdAt)}</p>
               </div>
 
-              {/* Delete button — visible on hover */}
+              {/* Delete button — two-step confirm. First click shows "Confirm?", second executes. */}
               <button
                 onClick={(e) => handleDelete(e, conv.id)}
-                title="Delete"
-                className="flex-shrink-0 opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-zinc-600 hover:text-red-400 transition-all"
+                title={confirmingDeleteId === conv.id ? 'Click again to confirm' : 'Delete'}
+                className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center transition-all ${
+                  confirmingDeleteId === conv.id
+                    ? 'opacity-100 text-red-400'
+                    : 'opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400'
+                }`}
               >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                {confirmingDeleteId === conv.id ? (
+                  <span className="text-[9px] font-semibold leading-none">✕?</span>
+                ) : (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                )}
               </button>
             </div>
           ))

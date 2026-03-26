@@ -17,9 +17,9 @@ import {
   setCurrentMode,
   setLastRouting,
 } from '../slices/infrastructure';
-import { appendStreamToken, finaliseStream } from '../slices/chat';
+import { appendStreamToken, finaliseStream, hydrateConversations } from '../slices/chat';
 import { setManifest } from '../slices/manifest';
-import { setPullProgress, clearPullProgress } from '../slices/settings';
+import { setPullProgress, clearPullProgress, updateCloudUsage } from '../slices/settings';
 
 /**
  * Sets up all main→renderer IPC event listeners and wires them to Redux actions.
@@ -101,6 +101,46 @@ export function setupIpcListeners(store) {
 
   // install-progress and download-progress are handled directly by the wizard
   // component via one-time listeners, not Redux — no action needed here.
+
+  /**
+   * budget-warning → settings.updateCloudUsage
+   * Emitted when a provider reaches 90% or 100% of its monthly budget cap.
+   */
+  api.on('budget-warning', ({ provider, usedUSD } = {}) => {
+    if (provider) store.dispatch(updateCloudUsage({ provider, usedUSD }));
+  });
+
+  /**
+   * cloud-usage-update → settings.updateCloudUsage
+   * Emitted every 5 minutes by the LiteLLM usage polling loop in the main process.
+   */
+  api.on('cloud-usage-update', ({ provider, usedUSD } = {}) => {
+    if (provider) store.dispatch(updateCloudUsage({ provider, usedUSD }));
+  });
+
+  // ─── Conversation persistence (C3) ───────────────────────────────────────
+
+  // Load persisted conversations once on app startup
+  api.loadChatHistory().then((data) => {
+    if (data?.conversations?.length) {
+      store.dispatch(hydrateConversations(data.conversations));
+    }
+  }).catch(() => {
+    // Non-fatal — start with empty conversation list
+  });
+
+  // Save conversations to disk whenever chat state changes, debounced 500ms
+  let _saveChatTimer = null;
+  let _lastSavedConversations = null;
+  store.subscribe(() => {
+    const conversations = store.getState().chat.conversations;
+    if (conversations === _lastSavedConversations) return;
+    _lastSavedConversations = conversations;
+    clearTimeout(_saveChatTimer);
+    _saveChatTimer = setTimeout(() => {
+      api.saveChatHistory({ conversations }).catch(() => {});
+    }, 500);
+  });
 }
 
 /**

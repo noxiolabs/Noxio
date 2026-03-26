@@ -35,7 +35,13 @@ export default function Sidebar({ activeMode, onModeChange }) {
           key={id}
           onClick={() => !disabled && onModeChange(id)}
           disabled={disabled}
-          title={disabled ? `${label} — coming soon` : label}
+          title={
+            disabled
+              ? id === 'voice' ? 'Voice — coming in a future release'
+              : id === 'agent' ? 'Agent — coming in a future release'
+              : `${label} — coming soon`
+              : label
+          }
           className={`flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors ${
             disabled
               ? 'opacity-25 cursor-not-allowed text-zinc-500'
@@ -63,7 +69,7 @@ export default function Sidebar({ activeMode, onModeChange }) {
 
       <button
         disabled
-        title="Gaming Mode — Phase 5"
+        title="Pause AI to free your GPU for gaming — coming soon"
         className="flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg opacity-20 cursor-not-allowed text-zinc-500"
       >
         <GamingIcon />

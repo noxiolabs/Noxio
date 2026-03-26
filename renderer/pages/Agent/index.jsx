@@ -10,10 +10,10 @@
 import React from 'react';
 
 export default function AgentPanel() {
-  // TODO Phase 7
   return (
-    <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
-      Agent panel — Phase 7
+    <div className="flex flex-col items-center justify-center h-full text-center gap-3">
+      <p className="text-white/60 text-sm">Agent automation is not available in this version.</p>
+      <p className="text-white/40 text-xs">Autonomous agent capabilities are coming in a future release.</p>
     </div>
   );
 }

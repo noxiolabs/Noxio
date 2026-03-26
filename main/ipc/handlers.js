@@ -155,7 +155,7 @@ function registerHandlers(mainWindow) {
     const validModes = ['chat', 'create', 'voice', 'agent', 'gaming'];
     if (!validModes.includes(targetMode)) {
       logger.warn(`IPC: switch-mode — invalid targetMode "${targetMode}"`);
-      mainWindow.webContents.send('mode-ready', targetMode ?? 'chat');
+      if (!mainWindow.isDestroyed()) mainWindow.webContents.send('mode-ready', targetMode ?? 'chat');
       return;
     }
     try {
@@ -163,7 +163,7 @@ function registerHandlers(mainWindow) {
     } catch (err) {
       // switchMode is already non-fatal internally, but guard here as a final safety net
       logger.error(`IPC: switch-mode failed — ${err.message}\n${err.stack}`);
-      mainWindow.webContents.send('mode-ready', targetMode);
+      if (!mainWindow.isDestroyed()) mainWindow.webContents.send('mode-ready', targetMode);
     }
   });
 
@@ -354,7 +354,23 @@ function registerHandlers(mainWindow) {
    */
   ipcMain.handle('validate-install-dir', async (_event, { dir }) => {
     try {
-      logger.info(`IPC: validate-install-dir "${dir}"`);
+      // Normalise to an absolute path to prevent traversal tricks
+      const resolvedDir = path.resolve(dir);
+      logger.info(`IPC: validate-install-dir "${resolvedDir}"`);
+
+      // Reject system-reserved directories
+      const BLOCKED_ROOTS = [
+        path.normalize('C:\\Windows'),
+        path.normalize('C:\\Program Files'),
+        path.normalize('C:\\Program Files (x86)'),
+        path.normalize('C:\\Windows\\System32'),
+      ];
+      if (BLOCKED_ROOTS.some((blocked) => resolvedDir.toLowerCase().startsWith(blocked.toLowerCase()))) {
+        return { ok: false, reason: 'Cannot install inside a system directory. Please choose a different location.', freeGB: 0 };
+      }
+
+      // Re-bind dir to the resolved path for all subsequent checks
+      dir = resolvedDir;
 
       // 1. Ensure directory can be created/accessed
       try {
@@ -483,8 +499,10 @@ function registerHandlers(mainWindow) {
     try {
       logger.info('IPC: complete-setup');
       store.set('settings.setupComplete', true);
+      return { success: true };
     } catch (err) {
       logger.error(`IPC: complete-setup failed — ${err.message}`);
+      return { success: false, error: err.message };
     }
   });
 
@@ -547,6 +565,7 @@ function registerHandlers(mainWindow) {
    * }} payload
    */
   ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId, forceCloud, cloudProvider } = {}) => {
+    try {
     logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}, forceCloud: ${!!forceCloud}`);
 
     // ── Routing decision ────────────────────────────────────────────────────
@@ -694,6 +713,16 @@ function registerHandlers(mainWindow) {
       // internal completeSent flag, so no need to send it again here.
       logger.error(`IPC: send-chat-message error — ${err.message}\n${err.stack}`);
     }
+
+    } catch (err) {
+      // Top-level guard: catch any exception from routing/budget blocks that
+      // escaped the inner try/catch, and report it to the renderer so the UI
+      // doesn't hang indefinitely in streaming state.
+      logger.error(`IPC: send-chat-message unhandled error — ${err.message}\n${err.stack}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('stream-complete');
+      }
+    }
   });
 
   /**
@@ -835,6 +864,9 @@ function registerHandlers(mainWindow) {
           ...providerSettings,
           apiKeySet: rawKey.length > 0,
           apiKeyMasked: rawKey.length > 0 ? `\u2022\u2022\u2022\u2022${rawKey.slice(-4)}` : '',
+          // Flag providers that were enabled on last session but have no key in memory
+          // (keys are never persisted — user must re-enter after restart)
+          apiKeyRequired: Boolean(providerSettings.enabled) && rawKey.length === 0,
         };
         // Ensure the raw key is never included, even if somehow stored on disk
         delete cloudProviders[provider].apiKey;
@@ -1114,9 +1146,21 @@ function registerHandlers(mainWindow) {
     try {
       logger.info('IPC: get-cloud-usage');
 
+      const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-03"
       const result = {};
       for (const provider of VALID_PROVIDERS) {
-        result[provider] = store.get(`settings.cloudProviders.${provider}.usedUSD`, 0);
+        const resetMonthKey = `settings.cloudProviders.${provider}.usageResetMonth`;
+        const usedKey       = `settings.cloudProviders.${provider}.usedUSD`;
+        const storedMonth   = store.get(resetMonthKey, null);
+
+        if (storedMonth !== currentMonth) {
+          // New month — reset usage and record the current month
+          store.set(usedKey, 0);
+          store.set(resetMonthKey, currentMonth);
+          result[provider] = 0;
+        } else {
+          result[provider] = store.get(usedKey, 0);
+        }
       }
 
       return result;
@@ -1174,6 +1218,50 @@ function registerHandlers(mainWindow) {
     } catch (err) {
       logger.error(`IPC: save-chat-settings failed — ${err.message}\n${err.stack}`);
       return { success: false, error: err.message };
+    }
+  });
+
+  // ─── UI helpers ─────────────────────────────────────────────────────────
+
+  /**
+   * Opens the settings overlay on a specific section. Sends an event to the renderer
+   * so the Redux settings slice can open the correct tab.
+   * @param {{ section: string }} payload
+   */
+  ipcMain.handle('open-settings', (_event, { section } = {}) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('open-settings', { section: section ?? 'models' });
+    }
+  });
+
+  // ─── Chat Persistence ────────────────────────────────────────────────────
+
+  /**
+   * Persists the chat history (conversations and messages) to electron-store
+   * so it survives app restarts.
+   * @param {{ conversations: Array, messages?: Object }} payload
+   * @returns {{ success: boolean }}
+   */
+  ipcMain.handle('save-chat-history', (_event, { conversations } = {}) => {
+    try {
+      store.set('chat-history', { conversations: conversations ?? [] });
+      return { success: true };
+    } catch (err) {
+      logger.error(`IPC: save-chat-history failed — ${err.message}`);
+      return { success: false };
+    }
+  });
+
+  /**
+   * Loads persisted chat history from electron-store.
+   * @returns {{ conversations: Array }|null}
+   */
+  ipcMain.handle('load-chat-history', () => {
+    try {
+      return store.get('chat-history', null);
+    } catch (err) {
+      logger.error(`IPC: load-chat-history failed — ${err.message}`);
+      return null;
     }
   });
 

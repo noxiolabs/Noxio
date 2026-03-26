@@ -30,8 +30,9 @@ const TTS_VOICES = [
  * @returns {JSX.Element}
  */
 export default function VoiceSection() {
-  const dispatch   = useDispatch();
-  const voice      = useSelector((s) => s.settings.voice);
+  const dispatch        = useDispatch();
+  const voice           = useSelector((s) => s.settings.voice);
+  const whisperInstalled = useSelector((s) => s.settings.installedServices?.whisper ?? false);
   const [lang,     setLang]    = useState(voice.sttLanguage);
   const [ttsVoice, setTtsVoice] = useState(voice.ttsVoice);
   const [saving,   setSaving]  = useState(false);
@@ -52,6 +53,19 @@ export default function VoiceSection() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!whisperInstalled) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-white mb-1">Voice Settings</h2>
+        </div>
+        <p className="text-sm text-zinc-500">
+          Voice is coming in a future release. Speech-to-text and text-to-speech will be available once Voice is enabled during setup.
+        </p>
+      </div>
+    );
   }
 
   return (

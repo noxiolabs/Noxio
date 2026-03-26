@@ -128,14 +128,21 @@ export default function ChatPanel() {
         {/* Top bar */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/60 flex-shrink-0">
           <ModelSelector conversationId={activeId} />
-          <div className="text-[10px] text-zinc-700">
+          <div className="text-xs text-zinc-500">
             {streaming ? (
-              <span className="text-violet-400 animate-pulse">Generating…</span>
+              <span className="text-violet-400 font-medium animate-pulse">Generating…</span>
             ) : activeConversation ? (
               `${activeConversation.messages.filter((m) => m.role === 'user').length} messages`
             ) : null}
           </div>
         </div>
+
+        {/* Full-width streaming progress bar */}
+        {streaming && (
+          <div className="h-0.5 w-full bg-zinc-800 flex-shrink-0">
+            <div className="h-full bg-violet-500/70 animate-pulse w-full" />
+          </div>
+        )}
 
         {/* Messages */}
         <MessageList />

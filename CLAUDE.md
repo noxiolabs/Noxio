@@ -629,6 +629,132 @@ A feature is done when:
 
 ---
 
+## Pre-Release Audit — Known Issues & Polish Backlog
+
+Audit conducted: 2026-03-25. These findings must be resolved before v0.1 ships. Items are grouped by area and tagged with priority.
+
+### How to use this list
+- **[BLOCKER]** — must be fixed before any release
+- **[HIGH]** — should be fixed before v0.1
+- **[MEDIUM]** — should be fixed before v0.1 or in the first patch
+- **[LOW]** — polish items, fix when time permits
+
+---
+
+### Setup Wizard
+
+| # | Priority | Finding | File |
+|---|---|---|---|
+| W1 | HIGH | PrereqScreen blocks on Python 3.11+ being pre-installed, but the installer creates isolated venvs — the Python check is contradictory and hostile to new users. Resolve: either remove the Python prereq check entirely, or confirm whether the installer truly requires a system Python and update the screen copy accordingly. | `renderer/pages/Setup/PrereqScreen.jsx` |
+| W2 | MEDIUM | Ollama row in PrereqScreen shows a warning icon when missing, but the only message is "will be installed automatically" with no action. Confusing — users don't know if they should do something or wait. Show a green "installing automatically" note, not a warning icon. | `renderer/pages/Setup/PrereqScreen.jsx` |
+| W3 | MEDIUM | Progress dots show only 6 positions but `TOTAL_STEPS = 8`. Dots under-represent wizard length. Fix dot count to match actual steps (excluding step 0 Welcome and final Ready). | `renderer/pages/Setup/index.jsx` |
+| W4 | MEDIUM | HardwareScreen has no Back button. All other wizard steps have Back. Add one. | `renderer/pages/Setup/HardwareScreen.jsx` |
+| W5 | HIGH | Agent is a selectable capability in CapabilitiesScreen but is deferred indefinitely. Selecting it installs nothing and lands the user on a stub panel. Remove Agent from `ALL_CAPABILITIES` or mark it non-selectable ("coming soon"). | `renderer/pages/Setup/CapabilitiesScreen.jsx` |
+| W6 | LOW | ModelsScreen JSDoc says "Screen 4" but it is now step 5. ReadyScreen says "Screen 6" but is step 7. Update JSDoc comments. | `renderer/pages/Setup/ModelsScreen.jsx`, `ReadyScreen.jsx` |
+| W7 | HIGH | No way to re-run setup or add capabilities post-wizard. If a user skips Image generation and later wants to add it, there is no UI path. Requires: new `install-additional-capability` IPC handler + a "Manage capabilities" section in Settings. | `main/ipc/handlers.js` (gap), `renderer/components/SettingsOverlay.jsx` |
+
+---
+
+### Settings Panel
+
+| # | Priority | Finding | File |
+|---|---|---|---|
+| S1 | HIGH | Appearance settings section is entirely non-functional. Theme and font size options are visible but clicking them does nothing — no `onClick` handler on the active option, no Save button. Either implement dark theme save or replace the section with a "Dark mode only in v0.1" note. | `renderer/components/settings/AppearanceSection.jsx` |
+| S2 | MEDIUM | No "Services" or "Capabilities" section in Settings. Users cannot see which services are installed, their install directory, or add new capabilities. Required surface for W7. | `renderer/components/SettingsOverlay.jsx` |
+| S3 | MEDIUM | Cloud section shows API key URLs as plain text with a Copy button. `openExternal` is not exposed in the preload bridge. Expose it so users can click directly to the provider's API key page. | `renderer/components/settings/CloudSection.jsx`, `main/preload.js` |
+| S4 | HIGH | API keys are held only in-memory and are lost on app restart. No warning is shown. On restart, cloud routing silently falls back to local. Fix: when `enabled: true` is persisted but `_apiKeys` is empty on startup, flag `apiKeyRequired: true` in the settings payload so the UI can prompt re-entry. | `main/ipc/handlers.js` |
+| S5 | LOW | VoiceSection in Settings is fully interactive even though Voice panel is a stub. Add a note that Voice is coming in a future release, or gate the section on `installedServices.whisper`. | `renderer/components/settings/VoiceSection.jsx` |
+| S6 | MEDIUM | `settings.chat.contextWindow` is persisted via `save-chat-settings` but `ollama.js:generateStream` always uses hardcoded `num_ctx: 4096` and never reads this value. The setting has zero effect. Either wire it up (with OOM warnings for values > 4096 on 16 GB VRAM) or remove the slider until Phase 4 completes the wiring. | `main/services/ollama.js`, `renderer/components/settings/ChatSection.jsx` |
+| S7 | LOW | `cloudProviders.{provider}.usedUSD` is never reset monthly. After the first month the accumulated value always exceeds the monthly cap, making budget enforcement meaningless. Store a `usageResetMonth` (ISO year-month) and reset `usedUSD` to 0 when the month changes. | `main/ipc/handlers.js` |
+
+---
+
+### Navigation & Routing
+
+| # | Priority | Finding | File |
+|---|---|---|---|
+| N1 | MEDIUM | Voice and Agent sidebar tabs are hardcoded `disabled: true`. Voice tab should enable dynamically when `installedServices.whisper` is true. Agent should be removed from the sidebar entirely (deferred indefinitely). | `renderer/components/Sidebar.jsx` |
+| N2 | MEDIUM | App.jsx renders `<ComingSoon label="Voice" />` for the voice route even though `VoicePanel` exists as a component. Wire `VoicePanel` into the `activeMode === 'voice'` branch once the Voice tab is enabled. | `renderer/App.jsx` |
+| N3 | LOW | Gaming Mode button sits in sidebar at 20% opacity with tooltip "Gaming Mode — Phase 5." This is internal developer language. Change tooltip to user-facing copy ("Pause AI to free your GPU for gaming — coming soon") or remove it entirely until the feature ships. | `renderer/components/Sidebar.jsx` |
+| N4 | LOW | Settings gear button always opens on the Models tab (`openSettingsPanel('models')`) regardless of which tab was last open. Change to open on the last active section. | `renderer/components/Sidebar.jsx` |
+
+---
+
+### Chat Panel
+
+| # | Priority | Finding | File |
+|---|---|---|---|
+| C1 | HIGH | When no models are installed, Chat shows "No models found" with no guidance. Add an inline prompt or button that navigates to Settings > Models when `models.length === 0`. | `renderer/pages/Chat/ModelSelector.jsx` |
+| C2 | MEDIUM | Delete conversation fires immediately with no confirmation. A misclick permanently loses the conversation. Add a two-step confirm (first click = confirm state, second click = execute). | `renderer/pages/Chat/ConversationSidebar.jsx` |
+| C3 | HIGH | Conversation history is not persisted between sessions. All conversations are lost on app restart. Persist conversations to electron-store via middleware or on `before-quit`. | `renderer/store/slices/chat.js` |
+| C4 | MEDIUM | Streaming "Generating…" indicator is `text-[10px]` in the top bar — easy to miss. Users may try to send a second message. Make the streaming state more visible, or add a full-width loading bar. | `renderer/pages/Chat/index.jsx` |
+| C5 | LOW | Code blocks in MessageBubble have no copy-to-clipboard button. This is a standard feature for any coding assistant. Add a Copy button to the `CodeBlock` header. | `renderer/pages/Chat/MessageBubble.jsx` |
+| C6 | LOW | Conversations cannot be renamed. Auto-titles based on the first message are often too short or incorrect. Add inline double-click rename. | `renderer/pages/Chat/ConversationSidebar.jsx` |
+| C7 | LOW | Cloud routing button (cloud icon in ChatInput) has no visible label. New users won't know what it does. Add a short label or tooltip that explains "Route via cloud AI." | `renderer/pages/Chat/ChatInput.jsx` |
+| C8 | LOW | Auto-title truncates at 40 chars in `chat.js` reducer but CLAUDE.md documents 50. Standardise to 50 and update both. | `renderer/store/slices/chat.js` |
+
+---
+
+### Create Panel
+
+| # | Priority | Finding | File |
+|---|---|---|---|
+| CR1 | HIGH | Create panel renders fully (prompt, generate button) even when ComfyUI is not installed or stopped. If the user did not select Images during setup, clicking Generate returns an error. Add a proactive check on mount: if `services.comfyui.status === 'not-installed'`, show a placeholder explaining ComfyUI is required and how to enable it. | `renderer/pages/Create/index.jsx` |
+| CR2 | MEDIUM | Gallery state is local React state — lost on every panel navigation (component unmount). Lift gallery into the Redux `create` slice so images persist when the user switches tabs. | `renderer/pages/Create/index.jsx` |
+| CR3 | MEDIUM | `image-progress` IPC event payload is `{ percent }` (object) per CLAUDE.md, but the listener reads it as a raw number. Progress bar will always show `[object Object]%`. Fix: `const onProgress = ({ percent }) => setProgress(percent ?? 0)`. | `renderer/pages/Create/index.jsx` |
+| CR4 | LOW | Save image uses an `<a>` tag click hack. Per code comment, Phase 6 should upgrade to a native save dialog via IPC (`save-image` channel). Implement before v0.1. | `renderer/pages/Create/ImageGallery.jsx` |
+| CR5 | LOW | No negative prompt field. Add an expandable Advanced section with a negative prompt textarea. | `renderer/pages/Create/index.jsx` |
+
+---
+
+### Status Bar
+
+| # | Priority | Finding | File |
+|---|---|---|---|
+| SB1 | MEDIUM | Service health dots show all 5 services even when only 2 were installed. Non-installed services show as `stopped` (grey dots) with raw internal names ("comfyui", "litellm"). Filter dots to only services in `settings.selectedCapabilities`, and map to user-facing labels: `{ ollama: 'AI Engine', litellm: 'Router', comfyui: 'Image', whisper: 'Voice In', kokoro: 'Voice Out' }`. | `renderer/components/StatusBar.jsx` |
+| SB2 | MEDIUM | On machines without NVIDIA GPU, `vram.availableGB` stays 0 forever and the bar pulses "VRAM checking…" permanently. After 10 seconds with no `vram-update`, switch to "VRAM N/A." | `renderer/components/StatusBar.jsx` |
+
+---
+
+### General / Shell
+
+| # | Priority | Finding | File |
+|---|---|---|---|
+| G1 | HIGH | Voice panel renders "Voice panel — Phase 6" — developer text visible to users if tab is re-enabled. Replace with `<ComingSoon>` component. | `renderer/pages/Voice/index.jsx` |
+| G2 | HIGH | Agent panel renders "Agent panel — Phase 7" — same problem. Replace with user-facing "Agent automation is not available in this version." | `renderer/pages/Agent/index.jsx` |
+| G3 | MEDIUM | No per-panel `ErrorBoundary`. A crash in ChatPanel takes down the entire app shell. Wrap each panel individually so a crash is contained and the user can switch panels. | `renderer/App.jsx` |
+| G4 | MEDIUM | App.jsx comment says "Phase 4: Chat panel live. Create / Voice / Agent show coming soon" — stale, Create is fully implemented. Update. | `renderer/App.jsx` |
+| G5 | LOW | WelcomeScreen promotes "Voice in and out" as a shipped feature, but Voice is a stub. Remove or add a "coming soon" qualifier. | `renderer/pages/Setup/WelcomeScreen.jsx` |
+
+---
+
+### Architecture / Main Process
+
+| # | Priority | Finding | File |
+|---|---|---|---|
+| A1 | HIGH | `send-chat-message` IPC handler: routing and budget enforcement blocks are outside any try/catch. An exception there propagates as an unhandled rejection visible as a raw error in the renderer. Wrap the entire handler body. | `main/ipc/handlers.js` |
+| A2 | MEDIUM | `switch-mode` handler calls `mainWindow.webContents.send` without `isDestroyed()` guard. All other handlers have this guard. Add it. | `main/ipc/handlers.js` |
+| A3 | MEDIUM | `complete-setup` handler swallows all errors and returns `undefined`. If `store.set` throws, the wizard believes setup succeeded while `setupComplete` was never written. Return `{ success, error? }` and have ReadyScreen check it. | `main/ipc/handlers.js` |
+| A4 | MEDIUM | `not-installed` services are reported as `stopped` by the health checker — the status bar shows grey dots as if services crashed rather than were never installed. In `checkService`, return `'not-installed'` directly when `procState.status === 'not-installed'`. | `main/infrastructure/health-checker.js` |
+| A5 | MEDIUM | `budget-warning` and `cloud-usage-update` events are exposed in preload allowlist but not subscribed to in `ipc-middleware.js`. They are silently dropped — Redux budget state never updates. Add listeners. | `renderer/store/middleware/ipc-middleware.js` |
+| A6 | MEDIUM | `restartCount` in process-manager increments on each crash but never resets after a stable recovery. After one crash, the service gets only 4 more restart chances instead of 5. Reset to 0 after the process has been running stably for ≥ 30 seconds. | `main/infrastructure/process-manager.js` |
+| A7 | MEDIUM | `transitionToCreate` stops Ollama even if it was never started (e.g. user skipped LLM). Check `getServiceStates().ollama.status` before calling `stopService`. | `main/infrastructure/orchestrator.js` |
+| A8 | MEDIUM | `generateImageWithVRAMSwap` has no concurrency guard. Two rapid generate-image calls will cause interleaved start/stop on Ollama and ComfyUI. Add an `_imageGenerating` flag. | `main/infrastructure/orchestrator.js` |
+| A9 | MEDIUM | `electron-store` is pinned with `^8.2.0` — a minor version bump could pull in a pure-ESM build, breaking `require('electron-store')` in the main process. Pin to an exact version. | `package.json` |
+| A10 | LOW | `validate-install-dir` accepts a user-supplied path without path traversal sanitisation. Normalise with `path.resolve()` and reject system directory paths. | `main/ipc/handlers.js` |
+| A11 | LOW | `usedUSD` never resets monthly — budget cap comparison becomes meaningless after month 1. Add `usageResetMonth` field. | `main/ipc/handlers.js` |
+
+---
+
+### Decisions Made During Audit
+
+- **Voice (Phase 6) deferred** — Voice panel reverted from the feature branch on 2026-03-25. The Whisper STT + Kokoro TTS implementation had unresolvable startup issues (orchestrator race condition, Python server scripts missing). Voice will be re-approached as a standalone debug session before re-integrating.
+- **Agent panel deferred indefinitely** — confirmed, per earlier CLAUDE.md note. Remove from setup wizard capability list.
+- **Conversation persistence is a v0.1 requirement** — users expect chat history to survive restarts. This is not a Phase 5+ item; it must ship in v0.1.
+- **Capability management post-setup is a v0.1 requirement** — users who skip a capability during setup must be able to add it later from Settings without re-running the full wizard.
+
+---
+
 ## Open Questions (Resolve During Development)
 
 - **Agent framework** — ~~OpenClaw vs Open Interpreter vs custom~~ **DEFERRED.** See Product Positioning section. Noxio is not building a competing agent runtime. Future work is integration (MCP server, local API surface for external agents), not a standalone agent panel.

@@ -115,10 +115,10 @@ const chatSlice = createSlice({
     finaliseStream(state) {
       const conv = state.conversations.find((c) => c.id === state.activeConversationId);
       if (conv && conv.title === 'New conversation' && conv.messages.length >= 1) {
-        // Auto-title: first 40 chars of the first user message
+        // Auto-title: first 50 chars of the first user message
         const firstUser = conv.messages.find((m) => m.role === 'user');
         if (firstUser) {
-          conv.title = firstUser.content.slice(0, 40) + (firstUser.content.length > 40 ? '…' : '');
+          conv.title = firstUser.content.slice(0, 50) + (firstUser.content.length > 50 ? '…' : '');
         }
       }
       state.streaming = false;
@@ -159,6 +159,19 @@ const chatSlice = createSlice({
     setCloudProvider(state, action) {
       state.cloudProvider = action.payload ?? null;
     },
+
+    /**
+     * Replaces conversations with persisted data loaded from electron-store.
+     * Dispatched once at app startup by ipc-middleware after calling load-chat-history.
+     * @param {Array} action.payload - Array of persisted conversation objects
+     */
+    hydrateConversations(state, action) {
+      const conversations = Array.isArray(action.payload) ? action.payload : [];
+      state.conversations = conversations;
+      state.activeConversationId = conversations[0]?.id ?? null;
+      state.streaming = false;
+      state.streamingMessageId = null;
+    },
   },
 });
 
@@ -172,6 +185,7 @@ export const {
   setSelectedModel,
   setForceCloud,
   setCloudProvider,
+  hydrateConversations,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

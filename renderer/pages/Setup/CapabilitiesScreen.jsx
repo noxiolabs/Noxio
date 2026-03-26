@@ -32,12 +32,16 @@ const ALL_CAPABILITIES = [
     label: 'Voice',
     description: 'Speech-to-text (Whisper) and text-to-speech (Kokoro).',
     default: false,
+    disabled: true,
+    comingSoon: true,
   },
   {
     id: 'agent',
     label: 'Agent',
     description: 'Autonomous agent with a sandboxed workspace.',
     default: false,
+    disabled: true,
+    comingSoon: true,
   },
 ];
 
@@ -79,7 +83,8 @@ export default function CapabilitiesScreen({ hardware, capabilities, onCapabilit
 
       <div className="w-full max-w-sm space-y-2">
         {ALL_CAPABILITIES.map((cap) => {
-          const isDisabled = cap.requiresImage && !hardware?.canRunImage;
+          const isHardwareDisabled = cap.requiresImage && !hardware?.canRunImage;
+          const isDisabled = isHardwareDisabled || cap.disabled;
           const isChecked = selected.has(cap.id) && !isDisabled;
 
           return (
@@ -104,9 +109,16 @@ export default function CapabilitiesScreen({ hardware, capabilities, onCapabilit
               </div>
 
               <div>
-                <p className="text-sm font-medium text-zinc-100">{cap.label}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-zinc-100">{cap.label}</p>
+                  {cap.comingSoon && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-500 font-medium tracking-wide uppercase">
+                      Coming soon
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-zinc-500 mt-0.5">{cap.description}</p>
-                {isDisabled && (
+                {isHardwareDisabled && (
                   <p className="text-xs text-zinc-600 mt-1">Requires more VRAM</p>
                 )}
               </div>

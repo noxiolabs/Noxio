@@ -82,18 +82,23 @@ function httpGet(url, timeoutMs = HTTP_TIMEOUT_MS) {
  * @returns {Promise<string>}
  */
 async function checkService(name) {
+  // Short-circuit: if the process manager says this service was never installed,
+  // report that directly instead of attempting an HTTP check that will always fail.
+  const procState = processManager.getServiceStates()[name];
+  if (procState?.status === 'not-installed') {
+    return 'not-installed';
+  }
+
   try {
     const result = await httpGet(SERVICE_ENDPOINTS[name]);
     if (result.statusCode === 200) {
       return 'running';
     }
     // Non-200 — still starting or degraded
-    const procState = processManager.getServiceStates()[name];
-    return procState.status === 'starting' ? 'starting' : 'stopped';
+    return procState?.status === 'starting' ? 'starting' : 'stopped';
   } catch (_err) {
     // Connection refused or timeout — check if process is still starting
-    const procState = processManager.getServiceStates()[name];
-    if (procState.status === 'starting') {
+    if (procState?.status === 'starting') {
       return 'starting';
     }
     return 'stopped';

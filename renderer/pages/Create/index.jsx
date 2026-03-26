@@ -18,11 +18,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { nanoid } from '@reduxjs/toolkit';
+import { useSelector } from 'react-redux';
 import StyleSelector from './StyleSelector';
 import QualitySelector from './QualitySelector';
 import ImageGallery from './ImageGallery';
 
 export default function CreatePanel() {
+  const comfyuiStatus = useSelector((s) => s.infrastructure.services?.comfyui?.status);
   const [prompt, setPrompt]           = useState('');
   const [style, setStyle]             = useState('photorealistic');
   const [quality, setQuality]         = useState('standard');
@@ -53,8 +55,8 @@ export default function CreatePanel() {
     setProgress(0);
 
     // Subscribe to progress events
-    const onProgress = (percent) => {
-      setProgress(percent);
+    const onProgress = ({ percent }) => {
+      setProgress(percent ?? 0);
     };
     progressListenerRef.current = onProgress;
 
@@ -96,6 +98,15 @@ export default function CreatePanel() {
 
   function handleSelectImage(image) {
     setCurrentImage(image);
+  }
+
+  if (comfyuiStatus === 'not-installed') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center gap-3 p-8">
+        <p className="text-white/60 text-sm">Image generation is not set up.</p>
+        <p className="text-white/40 text-xs">ComfyUI was not installed during setup. To enable image generation, go to Settings and add the Images capability.</p>
+      </div>
+    );
   }
 
   return (

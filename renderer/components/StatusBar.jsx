@@ -4,8 +4,16 @@
  * and the currently selected model. All data sourced from Redux — no IPC here.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
+
+const SERVICE_LABELS = {
+  ollama:  'AI Engine',
+  litellm: 'Router',
+  comfyui: 'Image',
+  whisper: 'Voice In',
+  kokoro:  'Voice Out',
+};
 
 const STATUS_COLOR = {
   running:        'bg-green-500',
@@ -18,13 +26,14 @@ const STATUS_COLOR = {
 /** Single service health indicator dot. */
 function HealthDot({ name, status }) {
   const color = STATUS_COLOR[status] ?? STATUS_COLOR.stopped;
+  const label = SERVICE_LABELS[name] ?? name;
   const title = status === 'not-installed'
-    ? `${name}: Not installed`
-    : `${name}: ${status}`;
+    ? `${label}: Not installed`
+    : `${label}: ${status}`;
   return (
     <div className="flex items-center gap-1.5" title={title}>
       <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color}`} />
-      <span className="text-zinc-600 text-[10px] capitalize">{name}</span>
+      <span className="text-zinc-600 text-[10px]">{label}</span>
     </div>
   );
 }
@@ -84,12 +93,28 @@ export default function StatusBar() {
   const model       = useSelector((s) => s.chat.selectedModel);
   const lastRouting = useSelector((s) => s.infrastructure.lastRouting);
   const streaming   = useSelector((s) => s.chat.streaming);
+  const [vramTimedOut, setVramTimedOut] = useState(false);
+
+  // After 10s with no VRAM data, stop showing "checking" and show "N/A" instead
+  useEffect(() => {
+    if (vram.availableGB > 0) {
+      setVramTimedOut(false);
+      return;
+    }
+    const t = setTimeout(() => setVramTimedOut(true), 10000);
+    return () => clearTimeout(t);
+  }, [vram.availableGB]);
+
+  // Only show services that are actually installed
+  const visibleServices = Object.entries(services).filter(
+    ([, svc]) => svc.status !== 'not-installed'
+  );
 
   return (
     <div className="flex items-center justify-between px-4 h-8 bg-[#0a0a0c] border-t border-zinc-800/60 flex-shrink-0">
-      {/* Left: service health dots */}
+      {/* Left: service health dots — installed services only */}
       <div className="flex items-center gap-3">
-        {Object.entries(services).map(([name, svc]) => (
+        {visibleServices.map(([name, svc]) => (
           <HealthDot key={name} name={name} status={svc.status} />
         ))}
       </div>
@@ -102,10 +127,12 @@ export default function StatusBar() {
         <RoutingPill provider={lastRouting.provider} streaming={streaming} />
       </div>
 
-      {/* Right: VRAM meter — shows 'checking' until the first vram-update arrives */}
+      {/* Right: VRAM meter — shows 'checking' until first vram-update, then 'N/A' after 10s */}
       <div className="flex items-center">
         {vram.availableGB > 0 ? (
           <VramMeter usedGB={vram.usedGB} availableGB={vram.availableGB} />
+        ) : vramTimedOut ? (
+          <span className="text-[10px] text-zinc-700">VRAM N/A</span>
         ) : (
           <span className="text-[10px] text-zinc-700 animate-pulse">VRAM checking…</span>
         )}
