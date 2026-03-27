@@ -110,6 +110,13 @@ const serviceStates = {
 /** Live child process references keyed by service name */
 const _children = {};
 
+/**
+ * Timers used to reset restartCount after 30s of stable running.
+ * Cleared if the service crashes before the 30s window expires.
+ * @type {Object.<string, NodeJS.Timeout|null>}
+ */
+const _stableTimers = {};
+
 /** Intentional stop flags — prevents restart loop after an explicit stopService() */
 const _intentionalStop = {};
 
@@ -289,6 +296,17 @@ function spawnService(name) {
 
   emitStatus(name, 'running', child.pid);
 
+  // Reset restartCount after 30 seconds of stable running so a previously-crashed
+  // service that recovers gets the full 5 restart chances again.
+  if (_stableTimers[name]) clearTimeout(_stableTimers[name]);
+  _stableTimers[name] = setTimeout(() => {
+    if (serviceStates[name].status === 'running') {
+      serviceStates[name].restartCount = 0;
+      logger.info(`process-manager: [${name}] running stably for 30s — restartCount reset to 0`);
+    }
+    _stableTimers[name] = null;
+  }, 30_000);
+
   child.stdout.on('data', (data) => {
     logger.info(`[${name}] ${data.toString().trim()}`);
   });
@@ -310,6 +328,11 @@ function spawnService(name) {
   child.on('close', (code) => {
     serviceStates[name].lastExitCode = code;
     _children[name] = null;
+    // Cancel the stability timer — the process is no longer running
+    if (_stableTimers[name]) {
+      clearTimeout(_stableTimers[name]);
+      _stableTimers[name] = null;
+    }
 
     if (_intentionalStop[name]) {
       _intentionalStop[name] = false;

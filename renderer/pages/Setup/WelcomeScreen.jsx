@@ -10,7 +10,7 @@ const FEATURES = [
   'Chat & reason locally',
   'Code with AI assistance',
   'Generate images on-device',
-  'Voice in and out',
+  'Voice in and out (coming soon)',
 ];
 
 /**

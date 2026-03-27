@@ -16,7 +16,7 @@
     "@chatscope/chat-ui-kit-react": "^2.0.3",
     "@reduxjs/toolkit": "^2.3.0",
     "7zip-bin": "^5.2.0",
-    "electron-store": "^8.2.0",
+    "electron-store": "8.2.0",
     "node-7z": "^3.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

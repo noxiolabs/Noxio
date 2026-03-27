@@ -108,9 +108,15 @@ function emitModeReady(mode, mainWindow) {
 async function transitionToCreate() {
   logger.info('orchestrator: transition → create (stopping Ollama, starting ComfyUI)');
 
-  // Stop Ollama first to free VRAM for ComfyUI
-  await processManager.stopService('ollama');
-  logger.info('orchestrator: Ollama stopped');
+  // Only stop Ollama if it was actually running — it may have never been started
+  // (e.g. user skipped LLM capability during setup).
+  const ollamaStatus = processManager.getServiceStates().ollama?.status;
+  if (ollamaStatus === 'running') {
+    await processManager.stopService('ollama');
+    logger.info('orchestrator: Ollama stopped');
+  } else {
+    logger.info(`orchestrator: Ollama not running (status: ${ollamaStatus}) — skipping stop`);
+  }
 
   // Start ComfyUI
   await comfyui.start();
@@ -191,6 +197,9 @@ async function transitionFromGamingToCreate() {
     logger.warn(`orchestrator: ComfyUI startup after gaming mode: ${err.message}`);
   }
 }
+
+/** Concurrency guard — prevents two simultaneous inline image generation calls */
+let _imageGenerating = false;
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -274,8 +283,14 @@ async function switchMode(targetMode, currentMode, mainWindow) {
  * @throws {Error} If ComfyUI fails to start or generation fails
  */
 async function generateImageWithVRAMSwap(prompt, style, quality, onProgress) {
+  if (_imageGenerating) {
+    throw new Error('Image generation already in progress — please wait for the current job to finish');
+  }
+
+  _imageGenerating = true;
   logger.info(`orchestrator: generateImageWithVRAMSwap — style=${style}, quality=${quality}`);
 
+  try {
   // Stop Ollama to free VRAM
   logger.info('orchestrator: stopping Ollama for inline image generation');
   await processManager.stopService('ollama');
@@ -308,6 +323,10 @@ async function generateImageWithVRAMSwap(prompt, style, quality, onProgress) {
   }
 
   return imageDataUrl;
+
+  } finally {
+    _imageGenerating = false;
+  }
 }
 
 module.exports = { switchMode, generateImageWithVRAMSwap };

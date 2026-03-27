@@ -35,9 +35,9 @@ function CapRow({ label, ok }) {
 }
 
 /**
- * @param {{ onNext: () => void, onHardware: (hw: Object) => void }} props
+ * @param {{ onNext: () => void, onBack: () => void, onHardware: (hw: Object) => void }} props
  */
-export default function HardwareScreen({ onNext, onHardware }) {
+export default function HardwareScreen({ onNext, onBack, onHardware }) {
   const [hardware, setHardware] = useState(null);
   const [scanning, setScanning] = useState(true);
   const [error, setError] = useState(null);
@@ -114,12 +114,20 @@ export default function HardwareScreen({ onNext, onHardware }) {
         </div>
       </div>
 
-      <button
-        onClick={onNext}
-        className="px-8 py-3 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-medium transition-colors"
-      >
-        Continue →
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={onBack}
+          className="px-6 py-3 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-400 text-sm transition-colors"
+        >
+          ← Back
+        </button>
+        <button
+          onClick={onNext}
+          className="px-8 py-3 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-medium transition-colors"
+        >
+          Continue →
+        </button>
+      </div>
     </div>
   );
 }
