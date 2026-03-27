@@ -19,13 +19,10 @@
  *   generate-image            → Phase 5: comfyui.js
  *   start-recording           → Phase 6: whisper.js
  *   stop-recording            → Phase 6: whisper.js
- *   get-settings              → Settings panel: returns persisted settings with masked keys ✓
- *   save-cloud-provider       → Settings panel: stores key in-memory, prefs to disk        ✓
- *   save-routing-prefs        → Settings panel: persists routing preferences                ✓
+ *   get-settings              → Settings panel: returns persisted settings                  ✓
  *   set-default-model         → Settings panel: validates + persists per-capability model  ✓
  *   pull-model                → Settings panel: ollama.pullModel with progress events       ✓
  *   delete-model              → Settings panel: ollama.deleteModel                         ✓
- *   get-cloud-usage           → Settings panel: reads usedUSD from store                   ✓
  *   save-voice-settings       → Settings panel: persists STT language + TTS voice          ✓
  *   save-chat-settings        → Settings panel: persists context window + system prompt    ✓
  */
@@ -50,47 +47,6 @@ const manifest = require('../infrastructure/manifest');
 // electron-store — persists settings across app restarts
 const Store = require('electron-store');
 const store = new Store({ name: 'noxio-settings' });
-
-/**
- * In-memory store for cloud provider API keys.
- * Keys are NEVER written to electron-store or any file on disk. They are held
- * in the main process memory only and must be re-entered after an app restart.
- * Map key: provider name ('openai' | 'anthropic' | 'google')
- * Map value: raw API key string
- * @type {Map<string, string>}
- */
-const _apiKeys = new Map();
-
-/** Valid cloud provider names */
-const VALID_PROVIDERS = ['openai', 'anthropic', 'google'];
-
-/**
- * Rough token-based cost estimate for budget tracking.
- * Uses conservative per-token rates that err on the high side.
- * Real billing will differ — this is an approximation only until real LiteLLM
- * billing data is available in Phase 4.
- *
- * Rates per 1M tokens (input / output) in USD:
- *   openai:    $2.50 in / $10.00 out  — gpt-4o pricing
- *   anthropic: $3.00 in / $15.00 out  — claude-sonnet pricing
- *   google:    $0.075 in / $0.30 out  — gemini-flash pricing
- *
- * @param {string} provider - 'openai' | 'anthropic' | 'google'
- * @param {string} _modelName - Reserved for future per-model rate lookup
- * @param {number} inputTokens
- * @param {number} outputTokens
- * @returns {number} Estimated cost in USD
- */
-function estimateCost(provider, _modelName, inputTokens, outputTokens) {
-  // Conservative estimates — intentionally errs on the high side for safety
-  const RATES = {
-    openai:    { input: 2.50,  output: 10.00 },  // gpt-4o pricing
-    anthropic: { input: 3.00,  output: 15.00 },  // claude-sonnet pricing
-    google:    { input: 0.075, output: 0.30  },   // gemini-flash pricing
-  };
-  const rate = RATES[provider] ?? RATES.openai;
-  return (inputTokens / 1_000_000) * rate.input + (outputTokens / 1_000_000) * rate.output;
-}
 
 /**
  * Checks if a command is available on PATH by attempting to run it.
@@ -543,89 +499,20 @@ function registerHandlers(mainWindow) {
   });
 
   /**
-   * Sends the full conversation messages array to the LLM and streams tokens back.
-   * Phase 4: accepts full messages array for multi-turn context.
-   * Phase 5 will route via LiteLLM for hybrid cloud support.
-   *
-   * Extended payload fields:
-   *   forceCloud {boolean}      — if true, attempt to route to a cloud provider
-   *   cloudProvider {string|null} — preferred provider ('openai'|'anthropic'|'google'|null).
-   *                                 If null and forceCloud is true, the first enabled provider
-   *                                 with a configured API key is used.
-   *
-   * Always emits a 'routing-decision' event before streaming begins so the renderer
-   * can display which provider/model is handling the request.
+   * Sends the full conversation messages array to local Ollama and streams tokens back.
+   * Always routes to local Ollama — no cloud routing in alpha.
+   * Emits a 'routing-decision' event before streaming begins.
    *
    * @param {{
    *   messages: Array<{role: string, content: string}>,
    *   model: string,
    *   conversationId: string,
-   *   forceCloud?: boolean,
-   *   cloudProvider?: string|null
    * }} payload
    */
-  ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId, forceCloud, cloudProvider } = {}) => {
+  ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId } = {}) => {
     try {
-    logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}, forceCloud: ${!!forceCloud}`);
+      logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}`);
 
-    // ── Routing decision ────────────────────────────────────────────────────
-    // Determine which provider will handle this request and emit a routing-decision
-    // event so the renderer can reflect the choice in the UI (e.g. "via Claude").
-    //
-    // Current behaviour (Phase 4 / stub):
-    //   - If forceCloud is true, find the first enabled cloud provider that has a
-    //     configured API key. Emit routing-decision with that provider name.
-    //   - Regardless of the routing-decision emitted, the actual inference always
-    //     falls through to local Ollama below. Full cloud routing will be
-    //     implemented here when the cloud routing layer is added.
-    let resolvedProvider = 'local';
-
-    if (forceCloud) {
-      // Determine which cloud provider to attempt. If the caller named one, honour
-      // it (provided it is valid and has a key); otherwise fall back to the first
-      // enabled provider with a key.
-      const candidateProviders = (
-        typeof cloudProvider === 'string' && VALID_PROVIDERS.includes(cloudProvider)
-          ? [cloudProvider]
-          : VALID_PROVIDERS
-      );
-
-      const settings = store.get('settings', {});
-      const cloudProviderSettings = settings.cloudProviders || {};
-
-      for (const p of candidateProviders) {
-        const providerCfg = cloudProviderSettings[p] || {};
-        const hasKey = (_apiKeys.get(p) || '').length > 0;
-        if (providerCfg.enabled && hasKey) {
-          resolvedProvider = p;
-          break;
-        }
-      }
-
-      if (resolvedProvider === 'local') {
-        // No enabled cloud provider found — fall back to local and tell the renderer why.
-        logger.info('IPC: send-chat-message — forceCloud requested but no cloud provider configured; falling back to local');
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('routing-decision', {
-            provider: 'local',
-            model,
-            conversationId,
-            fallbackReason: 'no-cloud-configured',
-          });
-        }
-      } else {
-        logger.info(`IPC: send-chat-message — routing-decision: ${resolvedProvider} (force-cloud stub — actual inference is local until Phase 4)`);
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('routing-decision', {
-            provider: resolvedProvider,
-            model,
-            conversationId,
-          });
-        }
-      }
-    } else {
-      // Standard local path.
-      logger.info(`IPC: send-chat-message — routing-decision: local`);
       if (!mainWindow.isDestroyed()) {
         mainWindow.webContents.send('routing-decision', {
           provider: 'local',
@@ -633,91 +520,10 @@ function registerHandlers(mainWindow) {
           conversationId,
         });
       }
-    }
 
-    // ── Budget enforcement ───────────────────────────────────────────────────
-    // Check the monthly spend cap before allowing the request to proceed on a
-    // cloud provider. If the budget is exhausted, silently fall back to local
-    // and notify the renderer. If usage is at or above 90%, warn but allow.
-    if (resolvedProvider !== 'local') {
-      const providerSettings = store.get(`settings.cloudProviders.${resolvedProvider}`);
-      const budget = providerSettings?.monthlyBudgetUSD ?? 0;
-      const used   = providerSettings?.usedUSD ?? 0;
-
-      if (budget > 0 && used >= budget) {
-        // Budget exhausted — fall back to local, notify renderer.
-        logger.warn(`IPC: send-chat-message — budget exhausted for ${resolvedProvider} (used $${used.toFixed(4)} of $${budget}); falling back to local`);
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('routing-decision', {
-            provider: 'local',
-            model,
-            conversationId,
-            fallbackReason: 'budget-exhausted',
-          });
-        }
-        resolvedProvider = 'local';
-      } else if (budget > 0 && used >= budget * 0.9) {
-        // 90 % warning — still allow the request but alert the renderer.
-        logger.warn(`IPC: send-chat-message — ${resolvedProvider} budget at ${Math.round((used / budget) * 100)}% ($${used.toFixed(4)} of $${budget})`);
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('budget-warning', {
-            provider: resolvedProvider,
-            usedUSD: used,
-            budgetUSD: budget,
-            percentUsed: Math.round((used / budget) * 100),
-          });
-        }
-      }
-    }
-
-    // ── Inference ────────────────────────────────────────────────────────────
-    // TODO (Phase 4): when resolvedProvider !== 'local', call LiteLLM instead of
-    // Ollama directly. The routing-decision event above already reflects the cloud
-    // provider so the UI will be correct from day one.
-    //
-    // Cost tracking: after a successful cloud stream we record an estimated spend.
-    // This is a best-effort approximation (char-count / 4 as a token proxy) that
-    // will be replaced by real LiteLLM billing data in Phase 4.
-    const _cloudProviderForCost = resolvedProvider; // capture before any mutation
-    try {
       await ollama.generateStream(model, messages, mainWindow);
-
-      // ── Post-stream cost tracking (cloud only) ───────────────────────────
-      // Only runs when the request was NOT fallen back to local.
-      // estimateCost uses conservative per-token rates — see function definition.
-      if (_cloudProviderForCost !== 'local') {
-        const inputText = (messages || []).map((m) => m.content || '').join(' ');
-        const inputTokens  = Math.ceil(inputText.length / 4);
-        // Output token count is unavailable here because generateStream does not
-        // return the accumulated response string. Use a conservative flat estimate
-        // of 512 output tokens until Phase 4 provides real usage metrics.
-        const outputTokens = 512;
-        const estimatedCost = estimateCost(_cloudProviderForCost, model, inputTokens, outputTokens);
-
-        const currentUsed = store.get(`settings.cloudProviders.${_cloudProviderForCost}.usedUSD`) ?? 0;
-        const newUsed = currentUsed + estimatedCost;
-        store.set(`settings.cloudProviders.${_cloudProviderForCost}.usedUSD`, newUsed);
-
-        logger.info(`IPC: send-chat-message — stub cost estimate for ${_cloudProviderForCost}: $${estimatedCost.toFixed(6)} (total this month: $${newUsed.toFixed(4)})`);
-
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('cloud-usage-update', {
-            provider: _cloudProviderForCost,
-            usedUSD: newUsed,
-          });
-        }
-      }
     } catch (err) {
-      // generateStream guarantees stream-complete is sent exactly once via its
-      // internal completeSent flag, so no need to send it again here.
       logger.error(`IPC: send-chat-message error — ${err.message}\n${err.stack}`);
-    }
-
-    } catch (err) {
-      // Top-level guard: catch any exception from routing/budget blocks that
-      // escaped the inner try/catch, and report it to the renderer so the UI
-      // doesn't hang indefinitely in streaming state.
-      logger.error(`IPC: send-chat-message unhandled error — ${err.message}\n${err.stack}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('stream-complete');
       }
@@ -844,191 +650,19 @@ function registerHandlers(mainWindow) {
 
   /**
    * Returns the full persisted settings object from electron-store.
-   * Cloud provider API keys are NEVER returned as plain text — each provider's
-   * apiKey field is replaced by { apiKeySet: boolean, apiKeyMasked: string }.
-   * @returns {Object} Settings with masked API key fields
+   * @returns {Object} Settings object
    */
   ipcMain.handle('get-settings', () => {
     try {
       logger.info('IPC: get-settings');
-
       const settings = store.get('settings', {});
-
-      // Mask API keys for every provider before sending to renderer
-      const cloudProviders = {};
-      for (const provider of VALID_PROVIDERS) {
-        const providerSettings = (settings.cloudProviders || {})[provider] || {};
-        const rawKey = _apiKeys.get(provider) || '';
-        cloudProviders[provider] = {
-          ...providerSettings,
-          apiKeySet: rawKey.length > 0,
-          apiKeyMasked: rawKey.length > 0 ? `\u2022\u2022\u2022\u2022${rawKey.slice(-4)}` : '',
-          // Flag providers that were enabled on last session but have no key in memory
-          // (keys are never persisted — user must re-enter after restart)
-          apiKeyRequired: Boolean(providerSettings.enabled) && rawKey.length === 0,
-        };
-        // Ensure the raw key is never included, even if somehow stored on disk
-        delete cloudProviders[provider].apiKey;
-      }
-
-      return {
-        ...settings,
-        cloudProviders,
-      };
+      return settings;
     } catch (err) {
       logger.error(`IPC: get-settings failed — ${err.message}\n${err.stack}`);
       return { error: err.message };
     }
   });
 
-  /**
-   * Saves cloud provider settings. The API key is held in main-process memory only
-   * and is never written to electron-store. `enabled` and `monthlyBudgetUSD` are
-   * persisted to disk. If LiteLLM is running it would need a config rewrite + restart
-   * to pick up new keys — this is deferred to Phase 4's full cloud routing work.
-   * @param {{ provider: string, apiKey: string, enabled: boolean, monthlyBudgetUSD: number }} payload
-   * @returns {{ success: boolean, error?: string }}
-   */
-  ipcMain.handle('save-cloud-provider', (_event, { provider, apiKey, enabled, monthlyBudgetUSD } = {}) => {
-    try {
-      logger.info(`IPC: save-cloud-provider — provider: ${provider}`);
-
-      if (!VALID_PROVIDERS.includes(provider)) {
-        return { success: false, error: `Unknown provider: ${provider}` };
-      }
-
-      // Store raw API key in memory only — never on disk
-      if (typeof apiKey === 'string' && apiKey.length > 0) {
-        _apiKeys.set(provider, apiKey);
-      }
-
-      // Persist non-secret fields to electron-store
-      store.set(`settings.cloudProviders.${provider}.enabled`, Boolean(enabled));
-      store.set(
-        `settings.cloudProviders.${provider}.monthlyBudgetUSD`,
-        Math.max(0, Number(monthlyBudgetUSD) || 0)
-      );
-
-      const savedKey = _apiKeys.get(provider) || '';
-      return {
-        success: true,
-        apiKeySet: savedKey.length > 0,
-        apiKeyMasked: savedKey.length > 0 ? `\u2022\u2022\u2022\u2022${savedKey.slice(-4)}` : '',
-      };
-    } catch (err) {
-      logger.error(`IPC: save-cloud-provider failed — ${err.message}\n${err.stack}`);
-      return { success: false, error: err.message };
-    }
-  });
-
-  /**
-   * Verifies a cloud provider API key by making a lightweight HTTP request to
-   * the provider's API. Uses the key passed in the payload — never the in-memory
-   * key — so the user's freshly-entered key is tested directly.
-   * @param {{ provider: string, apiKey: string }} payload
-   * @returns {{ valid: boolean, error?: string }}
-   */
-  ipcMain.handle('verify-cloud-provider', (_event, { provider, apiKey } = {}) => {
-    return new Promise((resolve) => {
-      try {
-        logger.info(`IPC: verify-cloud-provider — provider: ${provider}`);
-
-        if (!VALID_PROVIDERS.includes(provider)) {
-          resolve({ valid: false, error: `Unknown provider: ${provider}` });
-          return;
-        }
-
-        if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-          resolve({ valid: false, error: 'No API key provided' });
-          return;
-        }
-
-        const key = apiKey.trim();
-        const https = require('https');
-
-        /** @type {{ hostname: string, path: string, headers: Record<string, string> }} */
-        let options;
-        if (provider === 'openai') {
-          options = {
-            hostname: 'api.openai.com',
-            path: '/v1/models',
-            method: 'GET',
-            headers: { Authorization: `Bearer ${key}` },
-          };
-        } else if (provider === 'anthropic') {
-          options = {
-            hostname: 'api.anthropic.com',
-            path: '/v1/models',
-            method: 'GET',
-            headers: {
-              'x-api-key': key,
-              'anthropic-version': '2023-06-01',
-            },
-          };
-        } else {
-          // google
-          options = {
-            hostname: 'generativelanguage.googleapis.com',
-            path: `/v1beta/models?key=${encodeURIComponent(key)}`,
-            method: 'GET',
-            headers: {},
-          };
-        }
-
-        const req = https.request(options, (res) => {
-          // Drain the response body so the socket is released
-          res.resume();
-          if (res.statusCode === 200) {
-            resolve({ valid: true });
-          } else if (res.statusCode === 401) {
-            resolve({ valid: false, error: 'Invalid API key' });
-          } else if (provider === 'google' && (res.statusCode === 400 || res.statusCode === 403)) {
-            resolve({ valid: false, error: 'Invalid API key' });
-          } else {
-            resolve({ valid: false, error: `Unexpected response from provider (HTTP ${res.statusCode})` });
-          }
-        });
-
-        req.on('error', (err) => {
-          logger.warn(`IPC: verify-cloud-provider — network error: ${err.message}`);
-          resolve({ valid: false, error: 'Could not reach provider — check your internet connection' });
-        });
-
-        req.setTimeout(8000, () => {
-          req.destroy();
-          logger.warn('IPC: verify-cloud-provider — request timed out');
-          resolve({ valid: false, error: 'Could not reach provider — check your internet connection' });
-        });
-
-        req.end();
-      } catch (err) {
-        logger.error(`IPC: verify-cloud-provider failed — ${err.message}\n${err.stack}`);
-        resolve({ valid: false, error: 'Verification failed unexpectedly' });
-      }
-    });
-  });
-
-  /**
-   * Persists LiteLLM routing preferences to electron-store.
-   * @param {{ preferLocal: boolean, allowCloudForLongContext: boolean, allowCloudForComplexReasoning: boolean }} payload
-   * @returns {{ success: boolean, error?: string }}
-   */
-  ipcMain.handle('save-routing-prefs', (_event, { preferLocal, allowCloudForLongContext, allowCloudForComplexReasoning } = {}) => {
-    try {
-      logger.info('IPC: save-routing-prefs');
-
-      store.set('settings.routing', {
-        preferLocal: Boolean(preferLocal),
-        allowCloudForLongContext: Boolean(allowCloudForLongContext),
-        allowCloudForComplexReasoning: Boolean(allowCloudForComplexReasoning),
-      });
-
-      return { success: true };
-    } catch (err) {
-      logger.error(`IPC: save-routing-prefs failed — ${err.message}\n${err.stack}`);
-      return { success: false, error: err.message };
-    }
-  });
 
   /**
    * Sets the default model for a given capability. Validates the model exists in
@@ -1124,40 +758,6 @@ function registerHandlers(mainWindow) {
     } catch (err) {
       logger.error(`IPC: delete-model failed — ${err.message}\n${err.stack}`);
       return { success: false, error: err.message };
-    }
-  });
-
-  /**
-   * Returns cloud provider spend totals (USD used this month) from electron-store.
-   * Does not call the LiteLLM API — reads the cached usedUSD values written by the
-   * Phase 4 usage-polling loop.
-   * @returns {{ openai: number, anthropic: number, google: number }}
-   */
-  ipcMain.handle('get-cloud-usage', () => {
-    try {
-      logger.info('IPC: get-cloud-usage');
-
-      const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-03"
-      const result = {};
-      for (const provider of VALID_PROVIDERS) {
-        const resetMonthKey = `settings.cloudProviders.${provider}.usageResetMonth`;
-        const usedKey       = `settings.cloudProviders.${provider}.usedUSD`;
-        const storedMonth   = store.get(resetMonthKey, null);
-
-        if (storedMonth !== currentMonth) {
-          // New month — reset usage and record the current month
-          store.set(usedKey, 0);
-          store.set(resetMonthKey, currentMonth);
-          result[provider] = 0;
-        } else {
-          result[provider] = store.get(usedKey, 0);
-        }
-      }
-
-      return result;
-    } catch (err) {
-      logger.error(`IPC: get-cloud-usage failed — ${err.message}\n${err.stack}`);
-      return { openai: 0, anthropic: 0, google: 0 };
     }
   });
 

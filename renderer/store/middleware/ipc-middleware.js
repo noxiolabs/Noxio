@@ -19,7 +19,7 @@ import {
 } from '../slices/infrastructure';
 import { appendStreamToken, finaliseStream, hydrateConversations } from '../slices/chat';
 import { setManifest } from '../slices/manifest';
-import { setPullProgress, clearPullProgress, updateCloudUsage } from '../slices/settings';
+import { setPullProgress, clearPullProgress } from '../slices/settings';
 
 /**
  * Sets up all main→renderer IPC event listeners and wires them to Redux actions.
@@ -101,14 +101,6 @@ export function setupIpcListeners(store) {
 
   // install-progress and download-progress are handled directly by the wizard
   // component via one-time listeners, not Redux — no action needed here.
-
-  /**
-   * budget-warning → settings.updateCloudUsage
-   * Emitted when a provider reaches 90% or 100% of its monthly budget cap.
-   */
-  api.on('budget-warning', ({ provider, usedUSD } = {}) => {
-    if (provider) store.dispatch(updateCloudUsage({ provider, usedUSD }));
-  });
 
   // ─── Conversation persistence (C3) ───────────────────────────────────────
 

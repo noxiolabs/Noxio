@@ -31,19 +31,6 @@ const initialState = {
 
   /** Currently selected model name (e.g. 'qwen2.5:14b') */
   selectedModel: null,
-
-  /**
-   * When true, the next message is forced to route via a cloud provider,
-   * overriding the router's local-preference logic.
-   * Resets to false after each message is sent.
-   */
-  forceCloud: false,
-
-  /**
-   * Which cloud provider to force when forceCloud is true.
-   * null = auto-pick the first enabled provider.
-   */
-  cloudProvider: null,
 };
 
 const chatSlice = createSlice({
@@ -143,24 +130,6 @@ const chatSlice = createSlice({
     },
 
     /**
-     * Enables or disables the per-message cloud-force toggle.
-     * Should be reset to false after a message is sent.
-     * @param {boolean} action.payload
-     */
-    setForceCloud(state, action) {
-      state.forceCloud = Boolean(action.payload);
-    },
-
-    /**
-     * Pins the cloud provider to use when forceCloud is true.
-     * Pass null to auto-select the first enabled provider.
-     * @param {'openai'|'anthropic'|'google'|null} action.payload
-     */
-    setCloudProvider(state, action) {
-      state.cloudProvider = action.payload ?? null;
-    },
-
-    /**
      * Replaces conversations with persisted data loaded from electron-store.
      * Dispatched once at app startup by ipc-middleware after calling load-chat-history.
      * @param {Array} action.payload - Array of persisted conversation objects
@@ -183,8 +152,6 @@ export const {
   finaliseStream,
   deleteConversation,
   setSelectedModel,
-  setForceCloud,
-  setCloudProvider,
   hydrateConversations,
 } = chatSlice.actions;
 

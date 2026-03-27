@@ -4,7 +4,19 @@
       "Bash(python:*)",
       "Bash(where node:*)",
       "Bash(node:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "WebSearch",
+      "Read(//c/Users/Aakash/AppData/Roaming/noxio/**)",
+      "Read(//c/Users/Aakash/AppData/Local/**)",
+      "Bash(\"E:/Noxio/venvs/litellm/Scripts/python.exe\" -m pip show litellm 2>/dev/null)",
+      "Bash(find E:/Noxio/venvs/litellm/Lib/site-packages/litellm -name *.pth)",
+      "Bash(grep -iE .pth$)",
+      "Read(//e/Noxio/venvs/litellm/**)",
+      "Bash(git -C \"C:/Users/Aakash/Documents/GitHub/Noxio\" add main/services/litellm.js main/index.js main/infrastructure/process-manager.js main/infrastructure/installer.js main/infrastructure/health-checker.js main/infrastructure/manifest.js main/ipc/handlers.js renderer/store/slices/infrastructure.js renderer/store/slices/settings.js renderer/store/middleware/ipc-middleware.js renderer/components/StatusBar.jsx renderer/pages/Setup/InstallingScreen.jsx CLAUDE.md)",
+      "Bash(git -C \"C:/Users/Aakash/Documents/GitHub/Noxio\" status --short)",
+      "Bash(git:*)"
     ]
   }
 }

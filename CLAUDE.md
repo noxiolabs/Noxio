@@ -17,7 +17,7 @@ A local-first AI desktop application. One app replaces ChatGPT, Midjourney, Elev
 - **Voice** — deferred to post-v0.1 (shown but disabled everywhere)
 - **Act** — deferred indefinitely (shown but disabled everywhere)
 
-**Hybrid model:** Users can optionally add cloud API keys (OpenAI, Anthropic, etc.) with per-provider monthly budget caps. Local always takes priority unless the user opts into cloud. Cloud routing layer is TBD — LiteLLM was removed due to a supply chain attack (March 2026).
+**Alpha is local-only.** Cloud support (API keys, hybrid routing) is deferred to v0.2.
 
 ---
 
@@ -34,40 +34,11 @@ The goal is to be the infrastructure layer that makes local AI accessible — al
 
 ---
 
-## Hybrid Cloud Routing
+## Cloud Routing
 
-**LiteLLM was removed on 2026-03-27** due to a supply chain attack (malicious versions 1.82.7 and 1.82.8 on PyPI, published by threat actor "TeamPCP"). The Noxio dev venv contained the compromised version. The routing layer is currently unimplemented — all chat goes directly to Ollama.
+**Removed for alpha (2026-03-27).** LiteLLM removed due to supply chain attack; cloud API calls and all cloud provider config subsequently stripped for the alpha release. All LLM requests go directly to local Ollama.
 
-Cloud routing will be reimplemented. The intended routing logic (priority order):
-1. **Privacy** — conversation marked private → local only, never cloud
-2. **Budget** — provider monthly cap exhausted → local fallback, never exceed
-3. **Complexity** — long context, complex reasoning → cloud if enabled and budget allows
-
-**Cloud providers to support:**
-
-| Provider | Models | Budget key |
-|---|---|---|
-| OpenAI | gpt-4o, gpt-4o-mini | `openai_monthly_usd` |
-| Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 | `anthropic_monthly_usd` |
-| Google | gemini-2.0-flash, gemini-2.5-pro | `google_monthly_usd` |
-
-**Settings Redux shape (preserved, routing not yet active):**
-```js
-settings: {
-  cloudProviders: {
-    openai:    { apiKey: '', enabled: false, monthlyBudgetUSD: 0, usedUSD: 0, usageResetMonth: null },
-    anthropic: { apiKey: '', enabled: false, monthlyBudgetUSD: 0, usedUSD: 0, usageResetMonth: null },
-    google:    { apiKey: '', enabled: false, monthlyBudgetUSD: 0, usedUSD: 0, usageResetMonth: null },
-  },
-  routing: {
-    preferLocal: true,
-    allowCloudForLongContext: true,
-    allowCloudForComplexReasoning: false,
-  }
-}
-```
-
-**Rules (carry forward to any replacement):** Never cloud if private. Never exceed budget. Never expose API keys in renderer — main process only via IPC.
+Cloud support will be re-evaluated for v0.2. When re-added: local-first, privacy-gated, budget-capped. Re-implement Redux state, Settings UI, and IPC handlers from scratch when the routing approach is decided.
 
 ---
 
@@ -455,4 +426,4 @@ These are not yet fixed. Everything else from the 2026-03-25 audit has been reso
 - **Twitter/X @noxiolabs** — Waiting on domain email setup.
 - **Voice re-integration** — Deferred. Whisper STT + Kokoro TTS had orchestrator race condition and missing Python server scripts. Re-approach as a standalone debug session before v0.2.
 - **W7 implementation approach** — Capability management post-setup needs design decision: full re-run of install steps for the new capability, or a targeted `install-additional-capability` flow?
-- **Cloud routing replacement** — LiteLLM removed (supply chain attack, 2026-03-27). Cloud routing is currently unimplemented. Options: direct provider SDK calls per-request in main process, a vetted alternative proxy, or a minimal in-house router. Decide before v0.2.
+- **Cloud routing (v0.2)** — LiteLLM removed (supply chain attack, 2026-03-27), cloud calls stripped for alpha. Options for v0.2: direct provider SDK calls per-request in main process, a vetted alternative proxy, or a minimal in-house router.

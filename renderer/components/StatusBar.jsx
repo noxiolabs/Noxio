@@ -55,43 +55,10 @@ function VramMeter({ usedGB, availableGB }) {
   );
 }
 
-/**
- * Small pill indicating whether the current (or most recent) stream was routed
- * to a cloud provider. Shown only while streaming or immediately after if the
- * last route was cloud. Disappears (reverts to nothing) when local routing is used.
- */
-function RoutingPill({ provider, streaming }) {
-  // Only surface cloud routing — local is the expected default, no pill needed.
-  if (!streaming || provider === 'local' || !provider) return null;
-
-  const tints = {
-    openai:    'text-green-400  bg-green-500/10  border-green-500/20',
-    anthropic: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
-    google:    'text-blue-400   bg-blue-500/10   border-blue-500/20',
-  };
-  const label = {
-    openai:    'OpenAI',
-    anthropic: 'Anthropic',
-    google:    'Google',
-  };
-
-  const tint  = tints[provider]  ?? 'text-zinc-400 bg-zinc-800 border-zinc-700';
-  const text  = label[provider]  ?? provider;
-
-  return (
-    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] border ${tint}`}>
-      <span aria-hidden="true">↑</span>
-      {text}
-    </span>
-  );
-}
-
 export default function StatusBar() {
   const services    = useSelector((s) => s.infrastructure.services);
   const vram        = useSelector((s) => s.infrastructure.vram);
   const model       = useSelector((s) => s.chat.selectedModel);
-  const lastRouting = useSelector((s) => s.infrastructure.lastRouting);
-  const streaming   = useSelector((s) => s.chat.streaming);
   const [vramTimedOut, setVramTimedOut] = useState(false);
 
   // After 10s with no VRAM data, stop showing "checking" and show "N/A" instead
@@ -118,12 +85,11 @@ export default function StatusBar() {
         ))}
       </div>
 
-      {/* Center: active model + cloud routing pill */}
+      {/* Center: active model */}
       <div className="flex items-center gap-2">
         <span className="text-[10px] text-zinc-600 truncate max-w-[200px]">
           {model ?? 'No model selected'}
         </span>
-        <RoutingPill provider={lastRouting.provider} streaming={streaming} />
       </div>
 
       {/* Right: VRAM meter — shows 'checking' until first vram-update, then 'N/A' after 10s */}

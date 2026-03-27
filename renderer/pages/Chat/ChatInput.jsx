@@ -7,8 +7,7 @@
  */
 
 import React, { useRef, useEffect } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
-import { setForceCloud } from '../../store/slices/chat';
+import { useSelector } from 'react-redux';
 
 /**
  * @param {{
@@ -19,11 +18,8 @@ import { setForceCloud } from '../../store/slices/chat';
  * }} props
  */
 export default function ChatInput({ value, onChange, onSend, onStop }) {
-  const dispatch      = useDispatch();
   const streaming     = useSelector((s) => s.chat.streaming);
   const selectedModel = useSelector((s) => s.chat.selectedModel);
-  const forceCloud    = useSelector((s) => s.chat.forceCloud);
-  const cloudProviders = useSelector((s) => s.settings.cloudProviders);
   const textareaRef   = useRef(null);
   const prevStreamingRef = useRef(false);
 
@@ -35,23 +31,6 @@ export default function ChatInput({ value, onChange, onSend, onStop }) {
     }
     prevStreamingRef.current = streaming;
   }, [streaming]);
-
-  // Determine the first enabled cloud provider for the badge label
-  const firstEnabledProvider = cloudProviders
-    ? Object.entries(cloudProviders).find(([, cfg]) => cfg.enabled)?.[0] ?? null
-    : null;
-  const hasCloudProvider = Boolean(firstEnabledProvider);
-
-  const providerLabel = {
-    openai: 'OpenAI',
-    anthropic: 'Anthropic',
-    google: 'Google',
-  };
-
-  function handleCloudToggle() {
-    if (!hasCloudProvider) return;
-    dispatch(setForceCloud(!forceCloud));
-  }
 
   // Auto-resize textarea
   useEffect(() => {
@@ -83,53 +62,6 @@ export default function ChatInput({ value, onChange, onSend, onStop }) {
           rows={1}
           className="flex-1 bg-transparent text-zinc-100 placeholder-zinc-600 text-sm resize-none outline-none leading-relaxed max-h-[200px] disabled:opacity-40"
         />
-
-        {/* Cloud override toggle — only shown when not streaming */}
-        {!streaming && (
-          <div className="flex-shrink-0 pb-0.5">
-            <button
-              type="button"
-              onClick={handleCloudToggle}
-              disabled={!hasCloudProvider}
-              title={
-                !hasCloudProvider
-                  ? 'No cloud provider configured — add one in Settings'
-                  : forceCloud
-                  ? `Cloud forced: ${providerLabel[firstEnabledProvider] ?? firstEnabledProvider} — click to disable`
-                  : 'Use cloud for this message'
-              }
-              className={[
-                'w-8 h-8 rounded-lg flex items-center justify-center transition-colors relative',
-                !hasCloudProvider
-                  ? 'text-zinc-700 cursor-not-allowed'
-                  : forceCloud
-                  ? 'text-blue-400 bg-blue-500/10 hover:bg-blue-500/20'
-                  : 'text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800',
-              ].join(' ')}
-            >
-              {/* Inline SVG cloud icon */}
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
-              </svg>
-              {/* Active provider badge */}
-              {forceCloud && firstEnabledProvider && (
-                <span className="absolute -top-1.5 -right-1.5 text-[8px] leading-none px-1 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                  {providerLabel[firstEnabledProvider]?.slice(0, 2).toUpperCase() ?? '?'}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
 
         <div className="flex-shrink-0 pb-0.5">
           {streaming ? (

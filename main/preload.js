@@ -32,8 +32,6 @@ const VALID_RECEIVE_CHANNELS = [
   'model-pull-complete',      // { model: string }
   'model-pull-error',         // { model: string, error: string }
   'routing-decision',         // { provider: string, model: string, conversationId: string, fallbackReason?: string }
-  'budget-warning',           // { provider: string, usedUSD: number, budgetUSD: number, percentUsed: number }
-  'cloud-usage-update',       // { provider: string, usedUSD: number }
   'open-settings',            // { section: string } — opens settings overlay from main process or external trigger
 ];
 
@@ -140,33 +138,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ─── Settings panel ─────────────────────────────────────────────────────
 
   /**
-   * Returns persisted settings. API keys are replaced by { apiKeySet, apiKeyMasked }
-   * — the raw key is never sent to the renderer.
+   * Returns persisted settings.
    * @returns {Promise<Object>}
    */
   getSettings: () => ipcRenderer.invoke('get-settings'),
-
-  /**
-   * Saves a cloud provider configuration. The API key is held in main-process memory
-   * only and is never written to disk. `enabled` and `monthlyBudgetUSD` are persisted.
-   * @param {string} provider - 'openai' | 'anthropic' | 'google'
-   * @param {string} apiKey
-   * @param {boolean} enabled
-   * @param {number} monthlyBudgetUSD
-   * @returns {Promise<{success: boolean, error?: string}>}
-   */
-  saveCloudProvider: (provider, apiKey, enabled, monthlyBudgetUSD) =>
-    ipcRenderer.invoke('save-cloud-provider', { provider, apiKey, enabled, monthlyBudgetUSD }),
-
-  /**
-   * Persists LiteLLM routing preferences.
-   * @param {boolean} preferLocal
-   * @param {boolean} allowCloudForLongContext
-   * @param {boolean} allowCloudForComplexReasoning
-   * @returns {Promise<{success: boolean, error?: string}>}
-   */
-  saveRoutingPrefs: (preferLocal, allowCloudForLongContext, allowCloudForComplexReasoning) =>
-    ipcRenderer.invoke('save-routing-prefs', { preferLocal, allowCloudForLongContext, allowCloudForComplexReasoning }),
 
   /**
    * Sets the default model for a capability. Validates the model exists in Ollama
@@ -192,20 +167,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{success: boolean, error?: string}>}
    */
   deleteModel: (model) => ipcRenderer.invoke('delete-model', { model }),
-
-  /**
-   * Returns cloud provider spend totals (USD used this month) from the persisted store.
-   * @returns {Promise<{openai: number, anthropic: number, google: number}>}
-   */
-  getCloudUsage: () => ipcRenderer.invoke('get-cloud-usage'),
-
-  /**
-   * Verifies a cloud provider API key with a lightweight live HTTP check.
-   * The key is used for this call only and is not stored.
-   * @param {{ provider: 'openai'|'anthropic'|'google', apiKey: string }} payload
-   * @returns {Promise<{valid: boolean, error?: string}>}
-   */
-  verifyCloudProvider: (payload) => ipcRenderer.invoke('verify-cloud-provider', payload),
 
   /**
    * Persists voice settings (STT language and TTS voice).
@@ -246,11 +207,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openSettings: (section) => ipcRenderer.invoke('open-settings', { section }),
 
   /**
-   * Sends the full conversation messages array to the LLM. Response tokens
+   * Sends the full conversation messages array to local Ollama. Response tokens
    * arrive via 'stream-token' events, completion via 'stream-complete'.
-   * A 'routing-decision' event fires before streaming begins, indicating which
-   * provider and model handled the request.
-   * @param {{ messages: Array<{role:string,content:string}>, model: string, conversationId: string, forceCloud?: boolean, cloudProvider?: string|null }} payload
+   * A 'routing-decision' event fires before streaming begins.
+   * @param {{ messages: Array<{role:string,content:string}>, model: string, conversationId: string }} payload
    * @returns {Promise<void>}
    */
   sendChatMessage: (payload) => ipcRenderer.invoke('send-chat-message', payload),

@@ -13,16 +13,12 @@ import React, { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { openSettingsPanel, closeSettingsPanel } from '../store/slices/settings';
 import ModelsSection     from './settings/ModelsSection';
-import CloudSection      from './settings/CloudSection';
-import RoutingSection    from './settings/RoutingSection';
 import VoiceSection      from './settings/VoiceSection';
 import ChatSection       from './settings/ChatSection';
 import AppearanceSection from './settings/AppearanceSection';
 
 const SECTIONS = [
   { key: 'models',     label: 'Models'     },
-  { key: 'cloud',      label: 'Cloud'      },
-  { key: 'routing',    label: 'Routing'    },
   { key: 'voice',      label: 'Voice'      },
   { key: 'chat',       label: 'Chat'       },
   { key: 'appearance', label: 'Appearance' },
@@ -37,8 +33,6 @@ const SECTIONS = [
 function SectionContent({ section }) {
   switch (section) {
     case 'models':     return <ModelsSection />;
-    case 'cloud':      return <CloudSection />;
-    case 'routing':    return <RoutingSection />;
     case 'voice':      return <VoiceSection />;
     case 'chat':       return <ChatSection />;
     case 'appearance': return <AppearanceSection />;
