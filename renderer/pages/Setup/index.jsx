@@ -95,6 +95,7 @@ export default function SetupWizard() {
         {step === 2 && (
           <HardwareScreen
             onNext={nextStep}
+            onBack={prevStep}
             onHardware={setHardware}
           />
         )}
