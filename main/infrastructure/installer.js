@@ -1,7 +1,7 @@
 /**
  * @file installer.js
  * @description Orchestrates the full Noxio setup wizard installation sequence.
- * Installs Ollama, Python-based services (LiteLLM, Whisper, Kokoro), ComfyUI, and
+ * Installs Ollama, Python-based services (Whisper, Kokoro), ComfyUI, and
  * downloads all required AI models in the correct order.
  *
  * Design principles:
@@ -44,7 +44,6 @@ const STEP_WEIGHTS = {
   'verify-python':            2,
   'install-comfyui':         12,
   'upgrade-torch-blackwell': 15, // ~2.5 GB PyTorch download
-  'install-litellm':          5,
   'install-whisper':       5,
   'install-kokoro':        5,
   'download-flux':        20,
@@ -144,7 +143,7 @@ function computeStepRanges(activeSteps, weights) {
  * for the current session so that the orchestrator can start the service immediately
  * after installation without waiting for an app restart.
  *
- * @param {string} service - Service key (e.g. 'comfyui', 'litellm')
+ * @param {string} service - Service key (e.g. 'comfyui', 'whisper')
  * @param {string|null} execPath - Executable or venv python path; null for Ollama
  */
 function persistServiceComplete(service, execPath) {
@@ -187,7 +186,6 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
   activeSteps.push('verify-python');
   if (hasImage) activeSteps.push('install-comfyui');
   if (hasImage) activeSteps.push('upgrade-torch-blackwell');
-  activeSteps.push('install-litellm');
   if (hasVoice) activeSteps.push('install-whisper');
   if (hasVoice) activeSteps.push('install-kokoro');
   if (hasImage) activeSteps.push('download-flux');
@@ -338,41 +336,6 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
       logger.error(`installer: upgrade-torch-blackwell failed — ${err.message}`);
       emitError(win, stepName, `Failed to upgrade PyTorch: ${err.message}`, true);
       return { success: false };
-    }
-  }
-
-  // ── Step: install-litellm ────────────────────────────────────────────────
-  {
-    const stepName = 'install-litellm';
-    const { start, end } = ranges[stepName];
-    const stepProgress = makeStepProgress(win, stepName, start, end, 'Installing LiteLLM...');
-
-    try {
-      if (installedServices.litellm) {
-        logger.info('installer: LiteLLM already installed — skipping');
-        emitProgress(win, stepName, end, 'LiteLLM already installed ✓');
-      } else if (!pythonExe) {
-        logger.warn('installer: no Python — skipping LiteLLM venv');
-        emitProgress(win, stepName, end, 'LiteLLM skipped (Python not available)');
-      } else {
-        emitProgress(win, stepName, start, 'Creating LiteLLM virtual environment...');
-        await createVenv({
-          service: 'litellm',
-          installDir,
-          pythonExe,
-          packages: ['litellm[proxy]'],
-          onProgress: stepProgress,
-        });
-        const litellmExe = require('path').join(installDir, 'venvs', 'litellm', 'Scripts', 'litellm.exe');
-        emitProgress(win, stepName, end, 'LiteLLM installed ✓');
-        emitServiceComplete(win, 'litellm', litellmExe);
-        persistServiceComplete('litellm', litellmExe);
-        manifest.markServiceInstalled(store, 'litellm', litellmExe);
-      }
-    } catch (err) {
-      logger.error(`installer: install-litellm failed — ${err.message}`);
-      emitError(win, stepName, `Failed to install LiteLLM: ${err.message}`, true);
-      // LiteLLM failure is not fatal for chat/coding — continue
     }
   }
 

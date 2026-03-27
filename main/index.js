@@ -11,7 +11,6 @@
  *   4. Start health-checker polling
  *   5. Run hardware detection (result accessible via get-hardware-info IPC)
  *   6. Start Ollama
- *   7. Start LiteLLM (optional — failures are non-fatal in Phase 2)
  *
  * This is the only file that should spawn OS processes or access the
  * filesystem directly — the renderer communicates exclusively via IPC.
@@ -25,7 +24,6 @@ const { registerHandlers } = require('./ipc/handlers');
 const processManager = require('./infrastructure/process-manager');
 const healthChecker = require('./infrastructure/health-checker');
 const { detectHardware } = require('./infrastructure/detector');
-const litellm = require('./services/litellm');
 const manifest = require('./infrastructure/manifest');
 const ollama = require('./services/ollama');
 const logger = require('./utils/logger');
@@ -144,15 +142,6 @@ async function startBackgroundServices(win) {
         await processManager.startService('ollama');
       } catch (err) {
         logger.error(`Failed to start Ollama: ${err.message}`);
-      }
-    }
-
-    // Start LiteLLM if it was installed
-    if (installedServices.litellm) {
-      try {
-        await litellm.startLiteLLM({});
-      } catch (err) {
-        logger.warn(`LiteLLM failed to start: ${err.message}`);
       }
     }
 

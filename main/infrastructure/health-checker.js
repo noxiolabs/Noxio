@@ -30,7 +30,6 @@ const HTTP_TIMEOUT_MS = 3000;
  */
 const SERVICE_ENDPOINTS = {
   ollama:  'http://127.0.0.1:11434/',
-  litellm: 'http://127.0.0.1:4000/health',
   comfyui: 'http://127.0.0.1:8188/system_stats',
   whisper: 'http://127.0.0.1:10300/health',
   kokoro:  'http://127.0.0.1:8880/health',
@@ -48,7 +47,6 @@ let _pollTimer = null;
  */
 const _lastKnownStatus = {
   ollama:  'unknown',
-  litellm: 'unknown',
   comfyui: 'unknown',
   whisper: 'unknown',
   kokoro:  'unknown',

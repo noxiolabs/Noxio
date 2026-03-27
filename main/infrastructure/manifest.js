@@ -28,7 +28,6 @@ function buildDefaultManifest() {
     services: {
       ollama:  { installed: false, executablePath: null, version: null, lastVerifiedAt: null, installCompletedAt: null },
       comfyui: { installed: false, executablePath: null, version: null, lastVerifiedAt: null, installCompletedAt: null },
-      litellm: { installed: false, executablePath: null, version: null, lastVerifiedAt: null, installCompletedAt: null },
       whisper: { installed: false, executablePath: null, version: null, lastVerifiedAt: null, installCompletedAt: null },
       kokoro:  { installed: false, executablePath: null, version: null, lastVerifiedAt: null, installCompletedAt: null },
     },
@@ -99,7 +98,7 @@ function getManifest(store) {
  * asynchronously and writes it back if found — never blocks the caller.
  *
  * @param {import('electron-store')} store
- * @param {string} serviceName - One of: ollama, comfyui, litellm, whisper, kokoro
+ * @param {string} serviceName - One of: ollama, comfyui, whisper, kokoro
  * @param {string|null} executablePath - Absolute path to the executable, or null for Ollama
  */
 function markServiceInstalled(store, serviceName, executablePath) {
@@ -118,7 +117,7 @@ function markServiceInstalled(store, serviceName, executablePath) {
   logger.info(`manifest: marked ${serviceName} as installed (path: ${executablePath ?? 'null'})`);
 
   // Fire-and-forget version detection for services that support --version
-  if (executablePath && (serviceName === 'ollama' || serviceName === 'litellm')) {
+  if (executablePath && serviceName === 'ollama') {
     detectVersion(executablePath).then((version) => {
       if (version) {
         store.set(`${key}.version`, version);

@@ -13,7 +13,6 @@ const STEP_DEFS = [
   { step: 'verify-python',          label: 'Verifying Python',          always: true },
   { step: 'install-comfyui',           label: 'Installing ComfyUI',          cap: 'image' },
   { step: 'upgrade-torch-blackwell',   label: 'Upgrading GPU drivers (PyTorch)', cap: 'image' },
-  { step: 'install-litellm',           label: 'Installing LiteLLM',          always: true },
   { step: 'install-whisper',        label: 'Installing Whisper',        cap: 'voice' },
   { step: 'install-kokoro',         label: 'Installing Kokoro',         cap: 'voice' },
   { step: 'download-flux',          label: 'Downloading image model',   cap: 'image' },

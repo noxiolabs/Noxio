@@ -1,14 +1,14 @@
 /**
  * @file process-manager.js
- * @description Spawns, monitors, restarts, and gracefully shuts down all 5 background
- * services (Ollama, LiteLLM, ComfyUI, Whisper, Kokoro). Tracks PIDs, handles unexpected
+ * @description Spawns, monitors, restarts, and gracefully shuts down all 4 background
+ * services (Ollama, ComfyUI, Whisper, Kokoro). Tracks PIDs, handles unexpected
  * crashes with exponential backoff restarts, and emits service-status events to the
  * renderer via the BrowserWindow reference.
  *
  * All service spawning in Noxio must go through this module — never spawn services
  * directly from IPC handlers or service wrapper modules.
  *
- * Shutdown order: kokoro → whisper → comfyui → litellm → ollama (sequential).
+ * Shutdown order: kokoro → whisper → comfyui → ollama (sequential).
  */
 
 'use strict';
@@ -55,19 +55,6 @@ const SERVICE_CONFIG = {
     maxRestarts: 5,
     restartDelayBaseMs: 1000,
   },
-  litellm: {
-    executable: null,
-    args: ['--config', null, '--port', '4000'],
-    cwd: null,
-    env: {
-      // Force UTF-8 stdout so LiteLLM's Unicode banner doesn't crash on
-      // Windows systems where the default console codepage is cp1252.
-      PYTHONUTF8: '1',
-      PYTHONIOENCODING: 'utf-8',
-    },
-    maxRestarts: 5,
-    restartDelayBaseMs: 1000,
-  },
   comfyui: {
     executable: null,
     // run_nvidia_gpu.bat is a self-contained launcher — no extra args needed
@@ -101,7 +88,6 @@ const SERVICE_CONFIG = {
  */
 const serviceStates = {
   ollama:  { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
-  litellm: { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
   comfyui: { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
   whisper: { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
   kokoro:  { status: 'stopped', pid: null, restartCount: 0, lastExitCode: null, startedAt: null },
@@ -200,51 +186,6 @@ async function resolvePythonPath() {
 }
 
 /**
- * Resolves the litellm CLI executable from the Python Scripts directory.
- * litellm does not support `python -m litellm` — must be run as the CLI entry point.
- * @returns {Promise<string>} Full path to litellm.exe
- */
-async function resolveLiteLLMPath() {
-  // First try: litellm.exe directly on PATH
-  for (const candidate of ['litellm', 'litellm.exe']) {
-    try {
-      const fullPath = await new Promise((resolve, reject) => {
-        execFile(
-          'powershell.exe',
-          ['-NoProfile', '-NonInteractive', '-Command', `(Get-Command ${candidate} -ErrorAction SilentlyContinue)?.Source`],
-          { windowsHide: true, timeout: 5000 },
-          (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
-        );
-      });
-      if (fullPath && fullPath.endsWith('.exe')) {
-        logger.info(`process-manager: resolved litellm CLI at "${fullPath}"`);
-        return fullPath;
-      }
-    } catch (_) {
-      // Try next
-    }
-  }
-
-  // Second try: derive Scripts dir from Python location
-  try {
-    const pythonPath = await resolvePythonPath();
-    const scriptsDir = path.join(path.dirname(pythonPath), 'Scripts');
-    const litellmExe = path.join(scriptsDir, 'litellm.exe');
-    await new Promise((resolve, reject) => {
-      execFile(litellmExe, ['--version'], { windowsHide: true, timeout: 5000 }, (err) =>
-        err ? reject(err) : resolve()
-      );
-    });
-    logger.info(`process-manager: resolved litellm CLI at "${litellmExe}"`);
-    return litellmExe;
-  } catch (_) {
-    // Fall through
-  }
-
-  throw new Error('litellm CLI not found — run: pip install litellm');
-}
-
-/**
  * Initialises the process manager with a BrowserWindow reference so it can push
  * service-status events to the renderer. Must be called once after window creation.
  * @param {import('electron').BrowserWindow} win
@@ -281,10 +222,7 @@ function spawnService(name) {
     return;
   }
 
-  // For litellm, replace the null config path placeholder before spawning
-  const args = config.args.map((a) => (a === null ? '' : a));
-
-  const child = spawn(config.executable, args, {
+  const child = spawn(config.executable, config.args, {
     cwd: config.cwd || undefined,
     env: { ...process.env, ...config.env },
     windowsHide: true,
@@ -402,7 +340,7 @@ function checkOllamaAlreadyRunning() {
  * Starts a named background service. Resolves executable paths on first call.
  * If the service is not yet installed (per _installedServices), emits 'not-installed'
  * and returns without spawning.
- * @param {string} name - 'ollama' | 'litellm' | 'comfyui' | 'whisper' | 'kokoro'
+ * @param {string} name - 'ollama' | 'comfyui' | 'whisper' | 'kokoro'
  * @returns {Promise<void>}
  */
 async function startService(name) {
@@ -464,9 +402,6 @@ async function startService(name) {
     try {
       if (name === 'ollama') {
         SERVICE_CONFIG[name].executable = await resolveOllamaPath();
-      } else if (name === 'litellm') {
-        // litellm has a dedicated CLI entry point — cannot be run via `python -m litellm`
-        SERVICE_CONFIG[name].executable = await resolveLiteLLMPath();
       } else {
         // comfyui, whisper, kokoro — run via Python
         SERVICE_CONFIG[name].executable = await resolvePythonPath();
@@ -561,12 +496,12 @@ async function stopService(name) {
 /**
  * Stops all services in the reverse startup order to avoid dependency issues.
  * Sequential — awaits each before moving to the next.
- * Order: kokoro → whisper → comfyui → litellm → ollama
+ * Order: kokoro → whisper → comfyui → ollama
  * @returns {Promise<void>}
  */
 async function stopAll() {
   logger.info('process-manager: stopping all services');
-  const order = ['kokoro', 'whisper', 'comfyui', 'litellm', 'ollama'];
+  const order = ['kokoro', 'whisper', 'comfyui', 'ollama'];
   for (const name of order) {
     await stopService(name);
   }

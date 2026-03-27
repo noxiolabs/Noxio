@@ -50,7 +50,7 @@ const initialState = {
   },
 
   /**
-   * LiteLLM routing preferences.
+   * Routing preferences.
    * preferLocal: always use local when capability is comparable.
    * allowCloudForLongContext: route to cloud when message exceeds local context window.
    * allowCloudForComplexReasoning: user opts into cloud for hard reasoning tasks.
@@ -80,7 +80,6 @@ const initialState = {
    */
   servicePaths: {
     comfyui:  null,
-    litellm:  null,
     whisper:  null,
     kokoro:   null,
   },
@@ -92,7 +91,6 @@ const initialState = {
   installedServices: {
     ollama:   false,
     comfyui:  false,
-    litellm:  false,
     whisper:  false,
     kokoro:   false,
   },
@@ -180,7 +178,7 @@ const settingsSlice = createSlice({
     },
 
     /**
-     * Updates cloud spend for a provider (from LiteLLM usage polling).
+     * Updates cloud spend for a provider.
      * @param {Object} action.payload
      * @param {'openai'|'anthropic'|'google'} action.payload.provider
      * @param {number} action.payload.usedUSD
@@ -223,7 +221,7 @@ const settingsSlice = createSlice({
     /**
      * Records the filesystem path for a specific installed service.
      * @param {Object} action.payload
-     * @param {'comfyui'|'litellm'|'whisper'|'kokoro'} action.payload.service
+     * @param {'comfyui'|'whisper'|'kokoro'} action.payload.service
      * @param {string} action.payload.executablePath
      */
     setServicePath(state, action) {
@@ -236,7 +234,7 @@ const settingsSlice = createSlice({
     /**
      * Marks a service as successfully installed.
      * @param {Object} action.payload
-     * @param {'ollama'|'comfyui'|'litellm'|'whisper'|'kokoro'} action.payload.service
+     * @param {'ollama'|'comfyui'|'whisper'|'kokoro'} action.payload.service
      * @param {boolean} [action.payload.installed=true]
      */
     markServiceInstalled(state, action) {

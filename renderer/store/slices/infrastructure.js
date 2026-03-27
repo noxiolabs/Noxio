@@ -16,7 +16,6 @@ const initialState = {
   /** Background service health — updated by 'service-status' IPC events */
   services: {
     ollama:  { status: 'stopped', pid: null },
-    litellm: { status: 'stopped', pid: null },
     comfyui: { status: 'stopped', pid: null },
     whisper: { status: 'stopped', pid: null },
     kokoro:  { status: 'stopped', pid: null },

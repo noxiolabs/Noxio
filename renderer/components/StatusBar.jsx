@@ -9,7 +9,6 @@ import { useSelector } from 'react-redux';
 
 const SERVICE_LABELS = {
   ollama:  'AI Engine',
-  litellm: 'Router',
   comfyui: 'Image',
   whisper: 'Voice In',
   kokoro:  'Voice Out',

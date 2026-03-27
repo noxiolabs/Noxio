@@ -576,9 +576,8 @@ function registerHandlers(mainWindow) {
     //   - If forceCloud is true, find the first enabled cloud provider that has a
     //     configured API key. Emit routing-decision with that provider name.
     //   - Regardless of the routing-decision emitted, the actual inference always
-    //     falls through to local Ollama below. Full LiteLLM cloud routing is
-    //     Phase 4 work — at that point this block is the ONLY place that needs to
-    //     change (swap the ollama.generateStream call for a litellm call).
+    //     falls through to local Ollama below. Full cloud routing will be
+    //     implemented here when the cloud routing layer is added.
     let resolvedProvider = 'local';
 
     if (forceCloud) {
@@ -909,14 +908,6 @@ function registerHandlers(mainWindow) {
         `settings.cloudProviders.${provider}.monthlyBudgetUSD`,
         Math.max(0, Number(monthlyBudgetUSD) || 0)
       );
-
-      // LiteLLM config rewrite is deferred to Phase 4 — at that point generateConfig()
-      // in litellm.js will need to be extended to include cloud provider sections and
-      // the process will need a restart to pick up the new config + env-var keys.
-      const litellmState = processManager.getServiceStates();
-      if (litellmState.litellm && litellmState.litellm !== 'stopped' && litellmState.litellm !== 'not-installed') {
-        logger.info('IPC: save-cloud-provider — LiteLLM is running; config rewrite deferred to Phase 4 (requires restart to take effect)');
-      }
 
       const savedKey = _apiKeys.get(provider) || '';
       return {

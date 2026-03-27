@@ -17,7 +17,7 @@ A local-first AI desktop application. One app replaces ChatGPT, Midjourney, Elev
 - **Voice** — deferred to post-v0.1 (shown but disabled everywhere)
 - **Act** — deferred indefinitely (shown but disabled everywhere)
 
-**Hybrid model:** Users can optionally add cloud API keys (OpenAI, Anthropic, etc.) with per-provider monthly budget caps. LiteLLM handles routing. Local always takes priority unless the user opts into cloud.
+**Hybrid model:** Users can optionally add cloud API keys (OpenAI, Anthropic, etc.) with per-provider monthly budget caps. Local always takes priority unless the user opts into cloud. Cloud routing layer is TBD — LiteLLM was removed due to a supply chain attack (March 2026).
 
 ---
 
@@ -34,27 +34,16 @@ The goal is to be the infrastructure layer that makes local AI accessible — al
 
 ---
 
-## Hybrid Cloud Routing (Critical — Read Before Touching Settings or LiteLLM)
+## Hybrid Cloud Routing
 
-LiteLLM is the single routing layer. Every LLM request goes through it. Routing priority:
+**LiteLLM was removed on 2026-03-27** due to a supply chain attack (malicious versions 1.82.7 and 1.82.8 on PyPI, published by threat actor "TeamPCP"). The Noxio dev venv contained the compromised version. The routing layer is currently unimplemented — all chat goes directly to Ollama.
 
+Cloud routing will be reimplemented. The intended routing logic (priority order):
 1. **Privacy** — conversation marked private → local only, never cloud
 2. **Budget** — provider monthly cap exhausted → local fallback, never exceed
-3. **Complexity** — long context, complex reasoning, coding → cloud if enabled and budget allows
+3. **Complexity** — long context, complex reasoning → cloud if enabled and budget allows
 
-**Decision tree:**
-```
-Private? Yes → Local only
-Cloud enabled? No → Local only
-Budget remaining? No → Local fallback
-Complexity assessment:
-  Short/simple chat → Local
-  Long context (>4K tokens) + local limit exceeded → Cloud
-  Complex reasoning + user opted in → Cloud
-  Coding → Local preferred (qwen2.5-coder is strong), Cloud if complexity flag
-```
-
-**Cloud providers (via LiteLLM):**
+**Cloud providers to support:**
 
 | Provider | Models | Budget key |
 |---|---|---|
@@ -62,9 +51,7 @@ Complexity assessment:
 | Anthropic | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 | `anthropic_monthly_usd` |
 | Google | gemini-2.0-flash, gemini-2.5-pro | `google_monthly_usd` |
 
-**Budget enforcement:** Caps in Redux `settings` slice, persisted to disk, passed to LiteLLM at startup. Usage polled every 5 min from LiteLLM `/usage`. At 90% → StatusBar warning. At 100% → auto-fallback to local, notify user. `usedUSD` resets monthly — tracked via `usageResetMonth` (ISO year-month) per provider in the store.
-
-**Settings Redux shape:**
+**Settings Redux shape (preserved, routing not yet active):**
 ```js
 settings: {
   cloudProviders: {
@@ -80,7 +67,7 @@ settings: {
 }
 ```
 
-**Rules:** Never cloud if private. Never exceed budget. Never hard-code model names in the router. Never expose API keys in renderer — main process only via IPC.
+**Rules (carry forward to any replacement):** Never cloud if private. Never exceed budget. Never expose API keys in renderer — main process only via IPC.
 
 ---
 
@@ -106,7 +93,6 @@ settings: {
 | Styling | Tailwind CSS |
 | Packaging | electron-builder (Windows .exe) |
 | LLM serving | Ollama (native Windows, port 11434) |
-| Model routing | LiteLLM (native pip, port 4000) |
 | Image gen | ComfyUI (native Windows, port 8188) |
 | Speech-to-text | faster-whisper (native pip, port 10300) — deferred |
 | Text-to-speech | Kokoro FastAPI (native pip, port 8880) — deferred |
@@ -183,7 +169,7 @@ The authoritative list is in `main/ipc/handlers.js` (every handler is JSDoc'd). 
 
 **Renderer → Main (invoke):** `get-hardware-info`, `get-service-statuses`, `switch-mode`, `send-chat-message`, `stop-stream`, `generate-image`, `start-installation`, `complete-setup`, `save-cloud-provider`, `get-settings`, `list-models`, `pull-model`, `delete-model`, `get-cloud-usage`, `save-chat-history`, `load-chat-history`, `validate-install-dir`, `open-settings`
 
-**Main → Renderer (events):** `service-status`, `stream-token`, `stream-complete`, `vram-update`, `mode-ready`, `install-progress`, `download-progress`, `image-progress`, `routing-decision`, `budget-warning`, `cloud-usage-update`, `manifest-verified`, `model-pull-progress`, `model-pull-complete`, `model-pull-error`
+**Main → Renderer (events):** `service-status`, `stream-token`, `stream-complete`, `vram-update`, `mode-ready`, `install-progress`, `download-progress`, `image-progress`, `routing-decision`, `budget-warning`, `manifest-verified`, `model-pull-progress`, `model-pull-complete`, `model-pull-error`
 
 ---
 
@@ -283,7 +269,7 @@ Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `style`
 
 **Ollama configuration:**
 - Default context on 14B = 32768 → requires 48GB total. Always set `num_ctx 4096` in Modelfile
-- `OLLAMA_HOST=0.0.0.0` — so LiteLLM and other services can reach Ollama
+- `OLLAMA_HOST=0.0.0.0` — so any routing layer or external service can reach Ollama
 - `OLLAMA_KEEP_ALIVE=-1`, `OLLAMA_NUM_GPU=999`, `OLLAMA_FLASH_ATTENTION=1`
 - Set env vars via Admin PowerShell: `[System.Environment]::SetEnvironmentVariable("NAME","VALUE","Machine")`
 - GGUF Q4: 14B model ~8GB vs ~28GB in FP16
@@ -314,14 +300,12 @@ Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `style`
 
 **`num_ctx: 4096` enforcement (ollama.js):** Hardcoded in every `generateStream` call. Do not remove or make configurable without solving OOM — default on 14B requires ~48GB.
 
-**LiteLLM config:** Written to `app.getPath('userData')/litellm-config.yaml`. API keys are NEVER written to config — passed as env vars to the spawned process.
-
 **Process manager (process-manager.js):**
 - All services spawned with `spawn()`, `windowsHide: true`, never `shell: true`
 - Ollama path: `%APPDATA%\Local\Programs\Ollama\ollama.exe` → `C:\Program Files\Ollama\ollama.exe` → PATH
 - Python for services: `python` → `python3`
 - Restart backoff: `min(1000 * 2^restartCount, 30000)ms`, max 5 retries, resets after 30s stable
-- Shutdown order (reverse): kokoro → whisper → comfyui → litellm → ollama
+- Shutdown order (reverse): kokoro → whisper → comfyui → ollama
 - Shutdown: SIGTERM → 8s wait → SIGKILL
 - `not-installed` status: if `_installedServices[name] === false`, emits `not-installed` and returns — no crash loop. Ollama is exempt.
 
@@ -337,7 +321,6 @@ processManager.setPersistedPaths(...)   // MUST be before any startService()
 healthChecker.startPolling(win)
 detectHardware()                         // eager warm-up, result cached
 processManager.startService('ollama')
-litellm.startLiteLLM({})               // non-fatal if fails
 ```
 
 ---
@@ -382,7 +365,6 @@ litellm.startLiteLLM({})               // non-fatal if fails
 - ComfyUI: `{installDir}/comfyui/ComfyUI_windows_portable/`
 - Python venvs: `{installDir}/venvs/{service}/` — one per service
 - Venv Python: `{installDir}/venvs/{service}/Scripts/python.exe`
-- LiteLLM CLI: `{installDir}/venvs/litellm/Scripts/litellm.exe`
 - Whisper models: `{installDir}/venvs/whisper/models/`
 - Kokoro models: `{installDir}/venvs/kokoro/models/`
 - FLUX model: `{installDir}/comfyui/ComfyUI_windows_portable/ComfyUI/models/checkpoints/flux1-schnell-fp8.safetensors`
@@ -392,7 +374,6 @@ litellm.startLiteLLM({})               // non-fatal if fails
 **Python minimum version:** 3.11+. Windows App Store Python stubs (`WindowsApps` in path) are explicitly rejected — silently fail as real interpreter. Path resolved via PowerShell `Get-Command`.
 
 **Per-service pip packages:**
-- LiteLLM: `litellm[proxy]`
 - Whisper: `faster-whisper`
 - Kokoro: `kokoro-onnx`, `soundfile`
 All installed with `pip install --upgrade`.
@@ -474,3 +455,4 @@ These are not yet fixed. Everything else from the 2026-03-25 audit has been reso
 - **Twitter/X @noxiolabs** — Waiting on domain email setup.
 - **Voice re-integration** — Deferred. Whisper STT + Kokoro TTS had orchestrator race condition and missing Python server scripts. Re-approach as a standalone debug session before v0.2.
 - **W7 implementation approach** — Capability management post-setup needs design decision: full re-run of install steps for the new capability, or a targeted `install-additional-capability` flow?
+- **Cloud routing replacement** — LiteLLM removed (supply chain attack, 2026-03-27). Cloud routing is currently unimplemented. Options: direct provider SDK calls per-request in main process, a vetted alternative proxy, or a minimal in-house router. Decide before v0.2.

@@ -110,14 +110,6 @@ export function setupIpcListeners(store) {
     if (provider) store.dispatch(updateCloudUsage({ provider, usedUSD }));
   });
 
-  /**
-   * cloud-usage-update → settings.updateCloudUsage
-   * Emitted every 5 minutes by the LiteLLM usage polling loop in the main process.
-   */
-  api.on('cloud-usage-update', ({ provider, usedUSD } = {}) => {
-    if (provider) store.dispatch(updateCloudUsage({ provider, usedUSD }));
-  });
-
   // ─── Conversation persistence (C3) ───────────────────────────────────────
 
   // Load persisted conversations once on app startup
