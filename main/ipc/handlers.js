@@ -17,8 +17,9 @@
  *   send-chat-message         → Phase 2: ollama.js            ✓
  *   stop-stream               → Phase 2: ollama.js            ✓
  *   generate-image            → Phase 5: comfyui.js
- *   start-recording           → Phase 6: whisper.js
- *   stop-recording            → Phase 6: whisper.js
+ *   start-recording           → Phase 6: whisper.js           ✓
+ *   stop-recording            → Phase 6: whisper.js           ✓
+ *   speak-text                → Phase 6: kokoro.js            ✓
  *   get-settings              → Settings panel: returns persisted settings                  ✓
  *   set-default-model         → Settings panel: validates + persists per-capability model  ✓
  *   pull-model                → Settings panel: ollama.pullModel with progress events       ✓
@@ -39,6 +40,8 @@ const processManager = require('../infrastructure/process-manager');
 const ollama = require('../services/ollama');
 const { isOllamaInstalled } = require('../wizard/ollama-installer');
 const orchestrator = require('../infrastructure/orchestrator');
+const whisper      = require('../services/whisper');
+const kokoro       = require('../services/kokoro');
 const { scanHardware } = require('../wizard/hardware-scan');
 const { recommend, getAlternatives } = require('../wizard/model-recommender');
 const { runInstallation } = require('../infrastructure/installer');
@@ -591,21 +594,61 @@ function registerHandlers(mainWindow) {
   // ─── Voice ───────────────────────────────────────────────────────────────
 
   /**
-   * Starts microphone recording for speech-to-text.
-   * TODO Phase 6: wire to main/services/whisper.js
+   * Signals that the renderer has started microphone capture.
+   * No main-process action needed — recording is handled entirely in the renderer
+   * via MediaRecorder. This channel exists so the renderer can confirm readiness
+   * and future phases can warm up the whisper service here if needed.
    */
-  ipcMain.handle('start-recording', async () => {
-    logger.info('IPC: start-recording (stub)');
+  ipcMain.handle('start-recording', () => {
+    logger.info('IPC: start-recording');
+    return { ok: true };
   });
 
   /**
-   * Stops recording and returns transcribed text.
-   * TODO Phase 6: wire to main/services/whisper.js
-   * @returns {Promise<string>} Transcribed text
+   * Receives a WAV audio buffer from the renderer and returns a transcript.
+   * The renderer encodes 16 kHz mono WAV before sending — no resampling needed here.
+   *
+   * @param {{ audioData: number[] }} payload - Byte array of WAV audio
+   * @returns {Promise<{ transcript: string }>}
    */
-  ipcMain.handle('stop-recording', async () => {
-    logger.info('IPC: stop-recording (stub)');
-    return '[Voice transcription stub — wire up Phase 6]';
+  ipcMain.handle('stop-recording', async (_event, { audioData } = {}) => {
+    logger.info(`IPC: stop-recording — ${audioData?.length ?? 0} bytes`);
+
+    if (!audioData || audioData.length === 0) {
+      return { transcript: '' };
+    }
+
+    try {
+      const buffer     = Buffer.from(audioData);
+      const transcript = await whisper.transcribe(buffer);
+      return { transcript };
+    } catch (err) {
+      logger.error(`IPC: stop-recording failed — ${err.message}`);
+      return { transcript: '', error: err.message };
+    }
+  });
+
+  /**
+   * Synthesises text to speech using Kokoro TTS and returns the WAV audio data.
+   * The renderer plays the audio via Web Audio API (AudioContext.decodeAudioData).
+   *
+   * @param {{ text: string, voice?: string }} payload
+   * @returns {Promise<{ audioData: number[] }|{ error: string }>}
+   */
+  ipcMain.handle('speak-text', async (_event, { text, voice = 'af_heart' } = {}) => {
+    logger.info(`IPC: speak-text — ${text?.length ?? 0} chars, voice=${voice}`);
+
+    if (!text || !text.trim()) {
+      return { error: 'No text provided' };
+    }
+
+    try {
+      const buffer = await kokoro.synthesise(text.trim(), voice);
+      return { audioData: Array.from(buffer) };
+    } catch (err) {
+      logger.error(`IPC: speak-text failed — ${err.message}`);
+      return { error: err.message };
+    }
   });
 
   // ─── Install Manifest ────────────────────────────────────────────────────

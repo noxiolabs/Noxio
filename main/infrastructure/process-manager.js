@@ -66,16 +66,17 @@ const SERVICE_CONFIG = {
   },
   whisper: {
     executable: null,
-    args: ['server.py', '--port', '10300'],
-    cwd: null,
+    // Absolute path so the Python executable finds the script regardless of cwd
+    args: [path.join(__dirname, '..', 'scripts', 'whisper_server.py'), '--port', '10300'],
+    cwd: path.join(__dirname, '..', 'scripts'),
     env: {},
     maxRestarts: 5,
     restartDelayBaseMs: 1000,
   },
   kokoro: {
     executable: null,
-    args: ['app.py', '--port', '8880'],
-    cwd: null,
+    args: [path.join(__dirname, '..', 'scripts', 'kokoro_server.py'), '--port', '8880'],
+    cwd: path.join(__dirname, '..', 'scripts'),
     env: {},
     maxRestarts: 5,
     restartDelayBaseMs: 1000,

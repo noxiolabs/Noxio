@@ -9,7 +9,7 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - POC validated on reference hardware (RTX 5080, Windows 11)
 - GitHub repo created: github.com/noxiolabs/Noxio
 - README, LICENSE (AGPL-3.0), topics, Discussions all live on GitHub
-- **Phases 1–5 complete** — Chat panel, Create panel (image generation), and real service installer all working
+- **Phases 1–6 complete** — Chat panel, Create panel (image generation), Voice panel (push-to-talk + TTS), and real service installer all working
 - **Image generation confirmed working** on RTX 5080 (Blackwell sm_100) with CUDA 12.8 / ComfyUI cu128
 - **83 unit tests passing**
 - Phase 5 PR merged to main
@@ -118,14 +118,18 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - [x] InstallingScreen responsive fix — 3-zone layout (pinned header+progress, scrollable steps, pinned footer); all other wizard screens get overflow-y-auto
 - [x] Dependency/install state tracking — manifest.js module, electron-store manifest key, startup verification pass, 2 IPC channels, manifest Redux slice
 
-### Phase 6 — Voice Panel (Weeks 11–12)
+### Phase 6 — Voice Panel (Weeks 11–12) ✅ COMPLETE
 
-- [ ] `main/services/whisper.js` — start faster-whisper process, transcription API
-- [ ] `main/services/kokoro.js` — start Kokoro FastAPI, TTS API
-- [ ] IPC: `start-recording`, `stop-recording` handlers
-- [ ] Voice panel UI: push-to-talk button, transcript display, voice response toggle
-- [ ] Redux `voice` slice: recording state, transcript
-- [ ] Test: push to talk → transcription → LLM response → Kokoro speaks response
+- [x] `main/services/whisper.js` — HTTP wrapper for whisper_server.py (faster-whisper)
+- [x] `main/services/kokoro.js` — HTTP wrapper for kokoro_server.py (kokoro-onnx)
+- [x] `main/scripts/whisper_server.py` — FastAPI server, lazy-loads model, CUDA float16 / CPU int8 fallback
+- [x] `main/scripts/kokoro_server.py` — FastAPI server, lazy-loads ONNX model, returns WAV bytes
+- [x] `main/infrastructure/process-manager.js` — fixed SERVICE_CONFIG paths for whisper + kokoro
+- [x] IPC: `start-recording`, `stop-recording` (WAV → Whisper → transcript), `speak-text` (Kokoro TTS)
+- [x] `main/preload.js` — stopRecording accepts audioData array, speakText method added
+- [x] Voice panel UI: push-to-talk button, transcript display, LLM response stream, Kokoro TTS playback
+- [x] Redux `voice` slice: recording state, transcript, speaking state
+- [x] Test: push to talk → transcription → LLM response → Kokoro speaks response
 
 ### Phase 7 — Agent Panel ⏸ DEFERRED
 

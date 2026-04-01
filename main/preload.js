@@ -233,16 +233,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('generate-image', { prompt, style, quality }),
 
   /**
-   * Starts microphone recording for voice input.
-   * @returns {Promise<void>}
+   * Signals the main process that recording has started.
+   * @returns {Promise<{ok: boolean}>}
    */
   startRecording: () => ipcRenderer.invoke('start-recording'),
 
   /**
-   * Stops recording and returns transcribed text.
-   * @returns {Promise<string>} Transcribed text
+   * Sends recorded WAV audio to the main process for Whisper transcription.
+   * @param {number[]} audioData - WAV audio as a plain number array
+   * @returns {Promise<{transcript: string}>}
    */
-  stopRecording: () => ipcRenderer.invoke('stop-recording'),
+  stopRecording: (audioData) => ipcRenderer.invoke('stop-recording', { audioData }),
+
+  /**
+   * Synthesises text via Kokoro TTS and returns WAV audio bytes.
+   * @param {string} text - Text to speak
+   * @param {string} [voice='af_heart'] - Kokoro voice ID
+   * @returns {Promise<{audioData: number[]}>} WAV audio as a plain number array
+   */
+  speakText: (text, voice = 'af_heart') =>
+    ipcRenderer.invoke('speak-text', { text, voice }),
 
   /**
    * Returns the current install state manifest from electron-store.

@@ -1,46 +1,109 @@
 /**
  * @file kokoro.js
- * @description Manages the Kokoro FastAPI process and wraps its text-to-speech API.
- * Kokoro runs natively on Windows at http://localhost:8880.
- * Runs on CPU only — zero VRAM cost, no conflict with LLM or image gen workloads.
- *
- * TODO Phase 6: implement process management and TTS API.
+ * @description HTTP API wrapper for kokoro_server.py (kokoro-onnx TTS).
+ * The server runs on CPU at http://localhost:8880 — zero VRAM cost.
+ * Started/stopped by process-manager.js — this module only wraps the HTTP API.
  */
 
 'use strict';
 
+const http   = require('http');
 const logger = require('../utils/logger');
 
 const KOKORO_BASE_URL = 'http://localhost:8880';
 
+// ─── Custom Error Classes ─────────────────────────────────────────────────────
+
+class KokoroNotRunningError extends Error {
+  constructor() {
+    super('Kokoro service not running');
+    this.code = 'KOKORO_NOT_RUNNING';
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 /**
- * Starts the Kokoro FastAPI process.
- * TODO Phase 6: implement via process-manager.js.
- * @returns {Promise<void>}
+ * Makes a raw HTTP request to the Kokoro server.
+ * @param {string} method
+ * @param {string} urlPath
+ * @param {Object|null} body
+ * @returns {Promise<http.IncomingMessage>}
  */
-async function start() {
-  logger.info('kokoro: start() — stub');
+function makeRequest(method, urlPath, body = null) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const options = {
+      hostname: '127.0.0.1',
+      port: 8880,
+      path: urlPath,
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+      },
+    };
+
+    const req = http.request(options, (res) => resolve(res));
+    req.on('error', (err) => {
+      if (err.code === 'ECONNREFUSED') reject(new KokoroNotRunningError());
+      else reject(err);
+    });
+
+    if (payload) req.write(payload);
+    req.end();
+  });
 }
 
 /**
- * Stops the Kokoro process.
- * TODO Phase 6: implement via process-manager.js.
- * @returns {Promise<void>}
+ * Reads a full response body as a Buffer.
+ * @param {http.IncomingMessage} res
+ * @returns {Promise<Buffer>}
  */
-async function stop() {
-  logger.info('kokoro: stop() — stub');
+function readBodyBuffer(res) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    res.on('data', (c) => chunks.push(c));
+    res.on('end', () => resolve(Buffer.concat(chunks)));
+    res.on('error', reject);
+  });
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Checks whether the Kokoro server is reachable.
+ * @returns {Promise<boolean>}
+ */
+async function checkRunning() {
+  try {
+    const res = await makeRequest('GET', '/health');
+    res.resume();
+    return res.statusCode === 200;
+  } catch (_) {
+    return false;
+  }
 }
 
 /**
- * Synthesises speech from text and returns an audio buffer.
- * TODO Phase 6: implement — POST to Kokoro API, stream audio back.
- * @param {string} text
+ * Synthesises text to speech and returns WAV audio bytes.
+ * @param {string} text - Text to synthesise
  * @param {string} [voice='af_heart'] - Kokoro voice ID
- * @returns {Promise<Buffer>} Audio data (WAV or MP3)
+ * @returns {Promise<Buffer>} WAV audio data
  */
 async function synthesise(text, voice = 'af_heart') {
-  logger.info(`kokoro: synthesise(voice=${voice}) — stub`);
-  return Buffer.alloc(0);
+  logger.info(`kokoro: synthesise() — ${text.length} chars, voice=${voice}`);
+
+  const res    = await makeRequest('POST', '/synthesise', { text, voice });
+  const buffer = await readBodyBuffer(res);
+
+  if (res.statusCode !== 200) {
+    logger.error(`kokoro: synthesise returned HTTP ${res.statusCode}`);
+    throw new Error(`Kokoro synthesis failed (HTTP ${res.statusCode})`);
+  }
+
+  logger.info(`kokoro: synthesise() — received ${buffer.length} WAV bytes`);
+  return buffer;
 }
 
-module.exports = { start, stop, synthesise, KOKORO_BASE_URL };
+module.exports = { checkRunning, synthesise, KOKORO_BASE_URL, KokoroNotRunningError };

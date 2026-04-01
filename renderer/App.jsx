@@ -18,6 +18,7 @@ import Sidebar from './components/Sidebar';
 import StatusBar from './components/StatusBar';
 import ChatPanel from './pages/Chat';
 import CreatePanel from './pages/Create';
+import VoicePanel from './pages/Voice';
 import ErrorBoundary from './components/ErrorBoundary';
 import SettingsOverlay from './components/SettingsOverlay';
 
@@ -92,7 +93,7 @@ export default function App() {
           <main className="flex-1 overflow-hidden">
             {activeMode === 'chat'   && <ErrorBoundary panel><ChatPanel /></ErrorBoundary>}
             {activeMode === 'create' && <ErrorBoundary panel><CreatePanel /></ErrorBoundary>}
-            {activeMode === 'voice'  && <ComingSoon label="Voice" description="Voice input and output are coming in a future release." />}
+            {activeMode === 'voice'  && <ErrorBoundary panel><VoicePanel /></ErrorBoundary>}
             {activeMode === 'agent'  && <ComingSoon label="Agent" description="Agent automation is coming in a future release." />}
           </main>
         </div>
