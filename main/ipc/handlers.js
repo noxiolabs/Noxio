@@ -176,8 +176,8 @@ function registerHandlers(mainWindow) {
         ok: pythonOk,
         required: false,
         label: 'Python 3.11+',
-        note: pythonOk ? 'Found on PATH' : 'Not found — needed for LiteLLM, Whisper, and Kokoro',
-        link: 'https://www.python.org/downloads/',
+        note: pythonOk ? 'Found on PATH' : 'Not found — will be installed automatically',
+        link: null,
       },
       gpu: {
         ok: gpuOk,

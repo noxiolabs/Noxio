@@ -21,6 +21,7 @@
 const logger = require('../utils/logger');
 const { downloadModel } = require('../wizard/model-downloader');
 const { isOllamaInstalled, installOllama } = require('../wizard/ollama-installer');
+const { isPythonInstalled, installPython } = require('../wizard/python-installer');
 const ollama = require('../services/ollama');
 const processManager = require('./process-manager');
 const manifest = require('./manifest');
@@ -275,22 +276,31 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
 
     try {
       emitProgress(win, stepName, start, 'Checking Python installation...');
-      pythonExe = await resolveSystemPython();
-      emitProgress(win, stepName, end, 'Python 3.11+ found ✓');
+      const { installed, path: existingPath } = await isPythonInstalled();
+
+      if (installed) {
+        pythonExe = existingPath;
+        logger.info(`installer: Python found at "${pythonExe}"`);
+        emitProgress(win, stepName, end, 'Python 3.11+ found ✓');
+      } else if (hasImage || hasVoice) {
+        emitProgress(win, stepName, start + 1, 'Python not found — installing automatically...');
+        logger.info('installer: Python not found — running silent install via winget');
+        const stepProgress = makeStepProgress(win, stepName, start + 1, end, 'Installing Python 3.11...');
+        pythonExe = await installPython(stepProgress);
+        emitProgress(win, stepName, end, 'Python 3.11 installed ✓');
+      } else {
+        logger.warn('installer: Python not found but image/voice not selected — skipping');
+        emitProgress(win, stepName, end, 'Python not found — skipping (not needed for selected capabilities)');
+      }
     } catch (err) {
       logger.error(`installer: verify-python failed — ${err.message}`);
-      if (hasImage || hasVoice) {
-        emitError(
-          win,
-          stepName,
-          'Python 3.11+ not found. Please install Python from python.org and restart the wizard.',
-          false
-        );
-        return { success: false };
-      }
-      // No image/voice needed — Python is optional, continue without it
-      logger.warn('installer: Python not found but image/voice not selected — continuing');
-      emitProgress(win, stepName, end, 'Python not found — skipping (not needed for selected capabilities)');
+      emitError(
+        win,
+        stepName,
+        `Python installation failed: ${err.message}`,
+        true
+      );
+      return { success: false };
     }
   }
 
