@@ -148,7 +148,8 @@ function registerHandlers(mainWindow) {
 
     // ── Python (recommended — needed for LiteLLM/Whisper/Kokoro) ─────────
     const pythonOk = (await commandExists('python', ['--version']))
-      || (await commandExists('python3', ['--version']));
+      || (await commandExists('python3', ['--version']))
+      || (await commandExists('py', ['--version']));
 
     // ── GPU (informational) ───────────────────────────────────────────────
     let gpuName = null;

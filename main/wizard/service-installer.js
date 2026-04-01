@@ -47,7 +47,7 @@ async function resolveSystemPython() {
   // Ask Python itself for its version and executable path.
   // This is more reliable than PowerShell Get-Command which can resolve
   // to the WindowsApps stub even when a real Python is first on PATH.
-  for (const candidate of ['python', 'python3']) {
+  for (const candidate of ['python', 'python3', 'py']) {
     try {
       const output = await new Promise((resolve, reject) => {
         execFile(
@@ -79,7 +79,7 @@ async function resolveSystemPython() {
       // Candidate not available — try next
     }
   }
-  throw new Error('Python 3.11+ not found on PATH (tried python and python3)');
+  throw new Error('Python 3.11+ not found on PATH (tried python, python3, and py)');
 }
 
 // ─── ComfyUI installation ────────────────────────────────────────────────────
