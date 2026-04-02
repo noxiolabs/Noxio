@@ -1,6 +1,6 @@
 /**
  * @file CapabilitiesScreen.jsx
- * @description Setup wizard — Screen 3. Lets the user select which AI capabilities
+ * @description Setup wizard — Screen 2. Lets the user select which AI capabilities
  * to enable. Checkboxes are pre-selected based on detected hardware and disabled
  * (with a note) if the machine doesn't have enough VRAM.
  */

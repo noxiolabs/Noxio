@@ -1,7 +1,8 @@
 /**
  * @file HardwareScreen.jsx
- * @description Setup wizard — Screen 2. Runs a hardware scan via IPC and displays
+ * @description Setup wizard — Screen 1. Runs a hardware scan via IPC and displays
  * the detected GPU, VRAM, RAM, and which capabilities are available on this machine.
+ * Ollama installation is handled silently during the Installing screen if not already present.
  */
 
 import React, { useEffect, useState } from 'react';

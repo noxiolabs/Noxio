@@ -119,7 +119,7 @@ function registerHandlers(mainWindow) {
   /**
    * Checks whether the required and recommended prerequisites are installed.
    * Returns a map of { ok, version?, note? } per requirement.
-   * Used by the wizard PrereqScreen (Screen 1) to show what needs installing.
+   * Previously used by PrereqScreen — now used by the installer to verify Ollama.
    * Phase 3.5 (prerequisite checker).
    */
   ipcMain.handle('check-prerequisites', async () => {

@@ -1,6 +1,6 @@
 /**
  * @file WelcomeScreen.jsx
- * @description Setup wizard — Screen 1. Intro screen with app name, tagline,
+ * @description Setup wizard — Screen 0. Intro screen with app name, tagline,
  * and a brief capability summary. Entry point into the wizard flow.
  */
 

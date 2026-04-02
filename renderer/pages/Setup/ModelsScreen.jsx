@@ -4,6 +4,9 @@
  * via IPC and displays them with download sizes. Users can swap the recommended
  * model for any alternative that fits in their VRAM via a per-capability dropdown.
  * Shows total download size that updates live as the user makes selections.
+ *
+ * Note: InstallLocationScreen (Screen 3) already fetches recommendations to show
+ * accurate storage requirements, so models are pre-fetched.
  */
 
 import React, { useEffect, useState } from 'react';

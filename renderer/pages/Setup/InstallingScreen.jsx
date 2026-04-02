@@ -1,7 +1,8 @@
 /**
  * @file InstallingScreen.jsx
- * @description Setup wizard — Screen 6. Triggers installation via IPC and displays
+ * @description Setup wizard — Screen 5. Triggers installation via IPC and displays
  * a step-by-step progress list driven by 'install-progress' and 'install-error' events.
+ * Includes automatic Ollama installation if not already present.
  * Supports retry on retryable errors and pre-marks already-installed steps as done.
  */
 

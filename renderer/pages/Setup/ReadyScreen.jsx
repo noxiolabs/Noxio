@@ -3,6 +3,7 @@
  * @description Setup wizard — Screen 6. Confirms setup is complete and shows
  * current service health. The "Open Noxio" button dispatches completeSetup(),
  * which causes App.jsx to switch to the main application shell.
+ * Ollama and all selected services are now installed and running.
  */
 
 import React from 'react';

@@ -1,13 +1,12 @@
 /**
  * @file InstallLocationScreen.jsx
- * @description Setup wizard — Screen 4 (inserted between Capabilities and Models).
+ * @description Setup wizard — Screen 3 (inserted between Capabilities and Models).
  * Lets the user choose where Noxio stores services and models. Validates the path
  * via IPC and shows per-drive cards with usage bars for quick selection.
+ * Fetches model recommendations to show accurate storage requirements.
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-
-const SIZES = { chat: 10, coding: 8, image: 15, voice: 2, base: 3 };
 
 /** Horizontal usage bar inside a drive card. */
 function UsageBar({ usedGB, totalGB }) {
@@ -50,9 +49,19 @@ export default function InstallLocationScreen({ onNext, onBack, selectedCapabili
   const [drives, setDrives]         = useState([]);
   const [validation, setValidation] = useState(null);
   const [validating, setValidating] = useState(false);
+  const [recommendations, setRecommendations] = useState(null);
   const debounceRef                 = useRef(null);
 
-  const totalGB = SIZES.base + selectedCapabilities.reduce((sum, cap) => sum + (SIZES[cap] ?? 0), 0);
+  // Calculate total size: 5GB base + sum of all recommended model sizes
+  const totalGB = React.useMemo(() => {
+    let sum = 5; // Base system size
+    if (recommendations) {
+      Object.values(recommendations).forEach((rec) => {
+        sum += rec.sizeGB ?? 0;
+      });
+    }
+    return Math.ceil(sum * 10) / 10; // Round to 1 decimal place
+  }, [recommendations]);
 
   /** Validate the given directory via IPC. */
   const validate = useCallback(async (dir) => {
@@ -77,19 +86,21 @@ export default function InstallLocationScreen({ onNext, onBack, selectedCapabili
   useEffect(() => {
     let cancelled = false;
     async function init() {
-      const [defaultDir, drivesResult] = await Promise.all([
+      const [defaultDir, drivesResult, recsResult] = await Promise.all([
         window.electronAPI.getDefaultInstallDir(),
         window.electronAPI.getAvailableDrives(),
+        window.electronAPI.getModelRecommendations(selectedCapabilities).catch(() => null),
       ]);
       if (cancelled) return;
       const dir = defaultDir?.dir ?? '';
       setPathValue(dir);
       setDrives(drivesResult ?? []);
+      if (recsResult) setRecommendations(recsResult);
       if (dir) validate(dir);
     }
     init();
     return () => { cancelled = true; };
-  }, [validate]);
+  }, [selectedCapabilities, validate]);
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
