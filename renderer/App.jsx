@@ -32,9 +32,29 @@ function ComingSoon({ label, description }) {
   );
 }
 
+/** Full-screen overlay shown when game mode is active */
+function GameModeOverlay({ onDisable }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+      <div className="text-green-400 text-4xl">🎮</div>
+      <p className="text-zinc-200 font-semibold text-lg">Game Mode Active</p>
+      <p className="text-zinc-500 text-sm max-w-xs">
+        All AI services are paused. Your GPU VRAM is free for gaming.
+      </p>
+      <button
+        onClick={onDisable}
+        className="mt-2 px-4 py-2 rounded-lg bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors text-sm font-medium"
+      >
+        Disable Game Mode
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const dispatch = useDispatch();
   const setupComplete = useSelector((s) => s.settings.setupComplete);
+  const gameModeActive = useSelector((s) => s.settings.gameModeActive);
   const [activeMode, setActiveMode] = useState('chat');
 
   /**
@@ -91,10 +111,16 @@ export default function App() {
           <Sidebar activeMode={activeMode} onModeChange={handleModeChange} />
 
           <main className="flex-1 overflow-hidden">
-            {activeMode === 'chat'   && <ErrorBoundary panel><ChatPanel /></ErrorBoundary>}
-            {activeMode === 'create' && <ErrorBoundary panel><CreatePanel /></ErrorBoundary>}
-            {activeMode === 'voice'  && <ErrorBoundary panel><VoicePanel /></ErrorBoundary>}
-            {activeMode === 'agent'  && <ComingSoon label="Agent" description="Agent automation is coming in a future release." />}
+            {gameModeActive ? (
+              <GameModeOverlay onDisable={() => window.electronAPI?.toggleGameMode()} />
+            ) : (
+              <>
+                {activeMode === 'chat'   && <ErrorBoundary panel><ChatPanel /></ErrorBoundary>}
+                {activeMode === 'create' && <ErrorBoundary panel><CreatePanel /></ErrorBoundary>}
+                {activeMode === 'voice'  && <ErrorBoundary panel><VoicePanel /></ErrorBoundary>}
+                {activeMode === 'agent'  && <ComingSoon label="Agent" description="Agent automation is coming in a future release." />}
+              </>
+            )}
           </main>
         </div>
 

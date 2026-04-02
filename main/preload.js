@@ -33,6 +33,7 @@ const VALID_RECEIVE_CHANNELS = [
   'model-pull-error',         // { model: string, error: string }
   'routing-decision',         // { provider: string, model: string, conversationId: string, fallbackReason?: string }
   'open-settings',            // { section: string } — opens settings overlay from main process or external trigger
+  'game-mode-changed',        // boolean — true when game mode activates, false when it deactivates
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -253,6 +254,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   speakText: (text, voice = 'af_heart') =>
     ipcRenderer.invoke('speak-text', { text, voice }),
+
+  /**
+   * Toggles game mode. Stops all AI services when activating, restarts them when deactivating.
+   * Result arrives via 'game-mode-changed' event.
+   * @returns {Promise<{ gameModeActive: boolean }>}
+   */
+  toggleGameMode: () => ipcRenderer.invoke('toggle-game-mode'),
+
+  /**
+   * Returns the current game mode state.
+   * @returns {Promise<{ gameModeActive: boolean }>}
+   */
+  getGameMode: () => ipcRenderer.invoke('get-game-mode'),
 
   /**
    * Returns the current install state manifest from electron-store.

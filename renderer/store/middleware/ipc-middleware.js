@@ -19,7 +19,7 @@ import {
 } from '../slices/infrastructure';
 import { appendStreamToken, finaliseStream, hydrateConversations } from '../slices/chat';
 import { setManifest } from '../slices/manifest';
-import { setPullProgress, clearPullProgress, hydrateSettings, updateChatSettings, updateVoiceSettings, updateUI } from '../slices/settings';
+import { setPullProgress, clearPullProgress, hydrateSettings, updateChatSettings, updateVoiceSettings, updateUI, setGameMode } from '../slices/settings';
 
 /**
  * Sets up all main→renderer IPC event listeners and wires them to Redux actions.
@@ -99,8 +99,21 @@ export function setupIpcListeners(store) {
     store.dispatch(clearPullProgress());
   });
 
+  /**
+   * game-mode-changed → settings.setGameMode
+   * Emitted by the main process when game mode is toggled (via UI or tray menu).
+   */
+  api.on('game-mode-changed', (active) => {
+    store.dispatch(setGameMode(active));
+  });
+
   // install-progress and download-progress are handled directly by the wizard
   // component via one-time listeners, not Redux — no action needed here.
+
+  // ─── Game mode initial state ─────────────────────────────────────────────
+
+  // Game mode always starts as false on app launch (services restart fresh each time)
+  // No need to load from main process — default false is correct.
 
   // ─── Conversation persistence (C3) ───────────────────────────────────────
 

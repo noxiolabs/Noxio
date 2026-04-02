@@ -81,6 +81,13 @@ const initialState = {
   },
 
   /**
+   * Whether game mode is active. When true, all AI services are stopped to
+   * free VRAM for gaming, and all app tabs are disabled.
+   * NOT persisted — resets to false on restart (services restart on next launch).
+   */
+  gameModeActive: false,
+
+  /**
    * Transient settings panel UI state. NOT persisted to disk.
    * open: whether the settings overlay is visible.
    * activeSection: which tab is selected inside the overlay.
@@ -222,6 +229,15 @@ const settingsSlice = createSlice({
     },
 
     /**
+     * Sets game mode active state. Dispatched by ipc-middleware when the
+     * 'game-mode-changed' event arrives from the main process.
+     * @param {Object} action.payload - boolean
+     */
+    setGameMode(state, action) {
+      state.gameModeActive = Boolean(action.payload);
+    },
+
+    /**
      * Hydrates all persisted user settings from electron-store.
      * Merges loaded settings with defaults, preserving any unset fields.
      * Dispatched once at app startup by ipc-middleware after calling get-settings.
@@ -260,6 +276,7 @@ export const {
   setPullProgress,
   clearPullProgress,
   hydrateSettings,
+  setGameMode,
 } = settingsSlice.actions;
 
 export default settingsSlice.reducer;

@@ -6,8 +6,8 @@
  * Settings gear button opens the SettingsOverlay on the Models section.
  */
 
-import React from 'react';
-import { useDispatch } from 'react-redux';
+import React, { useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { openSettingsPanel } from '../store/slices/settings';
 
 const MODES = [
@@ -22,38 +22,60 @@ const MODES = [
  */
 export default function Sidebar({ activeMode, onModeChange }) {
   const dispatch = useDispatch();
+  const gameModeActive = useSelector((s) => s.settings.gameModeActive);
+  const [gameToggling, setGameToggling] = useState(false);
 
   /** Opens the settings overlay on the Models section. */
   function handleOpenSettings() {
     dispatch(openSettingsPanel('models'));
   }
 
+  /** Toggles game mode — stops all AI services to free VRAM, or restores them. */
+  async function handleGameModeToggle() {
+    if (gameToggling || !window.electronAPI) return;
+    setGameToggling(true);
+    try {
+      await window.electronAPI.toggleGameMode();
+      // State update arrives via 'game-mode-changed' event → Redux
+    } finally {
+      setGameToggling(false);
+    }
+  }
+
   return (
     <aside className="flex flex-col w-[60px] bg-[#0a0a0c] border-r border-zinc-800/60 py-3 gap-0.5 flex-shrink-0">
-      {MODES.map(({ id, label, Icon, disabled }) => (
-        <button
-          key={id}
-          onClick={() => !disabled && onModeChange(id)}
-          disabled={disabled}
-          title={
-            disabled
-              ? id === 'voice' ? 'Voice — coming in a future release'
-              : id === 'agent' ? 'Agent — coming in a future release'
-              : `${label} — coming soon`
-              : label
-          }
-          className={`flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors ${
-            disabled
-              ? 'opacity-25 cursor-not-allowed text-zinc-500'
-              : activeMode === id
-              ? 'bg-violet-600/20 text-violet-400'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
-          }`}
-        >
-          <Icon />
-          <span className="text-[9px] mt-1 font-medium tracking-wide">{label}</span>
-        </button>
-      ))}
+      {MODES.map(({ id, label, Icon, disabled }) => {
+        const isDisabledByGameMode = gameModeActive;
+        const isDisabled = disabled || isDisabledByGameMode;
+        return (
+          <button
+            key={id}
+            onClick={() => !isDisabled && onModeChange(id)}
+            disabled={isDisabled}
+            title={
+              isDisabledByGameMode
+                ? 'Game mode active — disable game mode to use AI features'
+                : disabled
+                ? id === 'voice' ? 'Voice — coming in a future release'
+                  : id === 'agent' ? 'Agent — coming in a future release'
+                  : `${label} — coming soon`
+                : label
+            }
+            className={`flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors ${
+              isDisabledByGameMode
+                ? 'opacity-20 cursor-not-allowed text-zinc-600'
+                : disabled
+                ? 'opacity-25 cursor-not-allowed text-zinc-500'
+                : activeMode === id
+                ? 'bg-violet-600/20 text-violet-400'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+            }`}
+          >
+            <Icon />
+            <span className="text-[9px] mt-1 font-medium tracking-wide">{label}</span>
+          </button>
+        );
+      })}
 
       <div className="flex-1" />
 
@@ -67,13 +89,29 @@ export default function Sidebar({ activeMode, onModeChange }) {
         <span className="text-[9px] mt-1 font-medium tracking-wide">Settings</span>
       </button>
 
+      {/* Game mode toggle — stops all AI services to free VRAM for gaming */}
       <button
-        disabled
-        title="Pause AI to free your GPU for gaming — coming soon"
-        className="flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg opacity-20 cursor-not-allowed text-zinc-500"
+        onClick={handleGameModeToggle}
+        disabled={gameToggling}
+        title={
+          gameToggling
+            ? gameModeActive ? 'Restoring AI services…' : 'Stopping AI services…'
+            : gameModeActive
+            ? 'Game mode active — click to restore AI services'
+            : 'Game mode — pause AI to free your GPU for gaming'
+        }
+        className={`flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors ${
+          gameToggling
+            ? 'opacity-50 cursor-wait text-zinc-500'
+            : gameModeActive
+            ? 'bg-green-600/20 text-green-400'
+            : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+        }`}
       >
         <GamingIcon />
-        <span className="text-[9px] mt-1 font-medium tracking-wide">Game</span>
+        <span className="text-[9px] mt-1 font-medium tracking-wide">
+          {gameModeActive ? 'Gaming' : 'Game'}
+        </span>
       </button>
     </aside>
   );

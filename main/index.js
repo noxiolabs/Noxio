@@ -18,8 +18,9 @@
 
 'use strict';
 
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { registerHandlers } = require('./ipc/handlers');
 const processManager = require('./infrastructure/process-manager');
 const healthChecker = require('./infrastructure/health-checker');
@@ -47,6 +48,12 @@ const isDev = process.env.NODE_ENV === 'development';
 
 /** @type {BrowserWindow|null} */
 let mainWindow = null;
+
+/** @type {Tray|null} */
+let tray = null;
+
+/** Whether game mode is currently active (all AI services stopped for gaming) */
+let gameModeActive = false;
 
 /**
  * Creates the main application window with security-hardened webPreferences.
@@ -90,6 +97,16 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // Hide to tray instead of closing unless the app is actively quitting.
+  // This allows background services (Ollama, etc.) to keep running while the window is hidden.
+  mainWindow.on('close', (event) => {
+    if (!_quitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      logger.info('Main window hidden to tray');
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -158,6 +175,108 @@ async function startBackgroundServices(win) {
   }
 }
 
+/**
+ * Creates the system tray icon with context menu.
+ * Falls back to an empty icon if assets/icon.png does not exist (dev mode).
+ * @param {BrowserWindow} win
+ */
+function createTray(win) {
+  const iconPath = path.join(__dirname, '../assets/icon.png');
+  const icon = fs.existsSync(iconPath)
+    ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 })
+    : nativeImage.createEmpty();
+
+  tray = new Tray(icon);
+  tray.setToolTip('Noxio');
+
+  function buildTrayMenu() {
+    return Menu.buildFromTemplate([
+      {
+        label: 'Open Noxio',
+        click: () => {
+          if (win && !win.isDestroyed()) {
+            win.show();
+            win.focus();
+          }
+        },
+      },
+      {
+        label: gameModeActive ? 'Disable Game Mode' : 'Enable Game Mode',
+        click: () => {
+          toggleGameMode(win);
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          app.quit();
+        },
+      },
+    ]);
+  }
+
+  tray.setContextMenu(buildTrayMenu());
+
+  tray.on('click', () => {
+    if (win && !win.isDestroyed()) {
+      if (win.isVisible()) {
+        win.focus();
+      } else {
+        win.show();
+        win.focus();
+      }
+    }
+  });
+
+  // Expose a way for handlers.js to refresh the tray menu after game mode changes
+  tray._rebuildMenu = () => tray.setContextMenu(buildTrayMenu());
+}
+
+/**
+ * Toggles game mode: stops all AI services to free VRAM, or restarts them.
+ * Emits 'game-mode-changed' to the renderer after the state changes.
+ * @param {BrowserWindow} win
+ */
+async function toggleGameMode(win) {
+  gameModeActive = !gameModeActive;
+  logger.info(`Game mode: ${gameModeActive ? 'activated' : 'deactivated'}`);
+
+  if (gameModeActive) {
+    // Stop all services to free GPU VRAM for gaming
+    healthChecker.stopPolling();
+    await processManager.stopAll().catch((err) => {
+      logger.error(`Game mode: failed to stop services — ${err.message}`);
+    });
+    logger.info('Game mode: all services stopped, VRAM released');
+  } else {
+    // Restore services
+    const setupComplete = store.get('settings.setupComplete', false);
+    const installedServices = store.get('settings.installedServices', {});
+    if (setupComplete && installedServices.ollama !== false) {
+      await processManager.startService('ollama').catch((err) => {
+        logger.error(`Game mode: failed to restart Ollama — ${err.message}`);
+      });
+    }
+    healthChecker.startPolling(win);
+    logger.info('Game mode: services restored');
+  }
+
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('game-mode-changed', gameModeActive);
+  }
+
+  if (tray?._rebuildMenu) tray._rebuildMenu();
+}
+
+/**
+ * Returns the current game mode state. Called by the get-game-mode IPC handler.
+ * @returns {boolean}
+ */
+function getGameModeActive() {
+  return gameModeActive;
+}
+
 app.whenReady().then(async () => {
   logger.info(`Noxio starting — Electron ${process.versions.electron}, Node ${process.versions.node}`);
 
@@ -165,7 +284,9 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
   const win = createWindow();
-  registerHandlers(win);
+  registerHandlers(win, { toggleGameMode: () => toggleGameMode(win), getGameModeActive });
+
+  createTray(win);
 
   // Start background services after window is created (non-blocking relative to render)
   startBackgroundServices(win).catch((err) => {
@@ -176,6 +297,8 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+    } else if (mainWindow && !mainWindow.isVisible()) {
+      mainWindow.show();
     }
   });
 });
@@ -208,12 +331,12 @@ process.on('SIGTERM', () => {
   app.quit();
 });
 
-// Quit when all windows are closed (except on macOS)
+// Don't quit when all windows are closed — we hide to tray instead.
+// Quitting only happens via the tray menu "Quit" option or app.quit() directly.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    logger.info('All windows closed — quitting');
-    app.quit();
-  }
+  // Intentionally do nothing — the window hides to tray, not closes.
+  // macOS already handles this via 'activate'.
+  logger.info('All windows hidden to tray — app continues running');
 });
 
 // Security: prevent navigation to arbitrary URLs

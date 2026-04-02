@@ -56,8 +56,9 @@ const store = new Store({ name: 'noxio-settings' });
  * so that mainWindow is available for push events (main → renderer).
  *
  * @param {import('electron').BrowserWindow} mainWindow
+ * @param {{ toggleGameMode: () => Promise<void>, getGameModeActive: () => boolean }} [gameModeApi]
  */
-function registerHandlers(mainWindow) {
+function registerHandlers(mainWindow, gameModeApi = {}) {
   // ─── Hardware & Service Info ─────────────────────────────────────────────
 
   /**
@@ -882,6 +883,35 @@ function registerHandlers(mainWindow) {
       logger.error(`IPC: load-chat-history failed — ${err.message}`);
       return null;
     }
+  });
+
+  // ─── Game Mode ──────────────────────────────────────────────────────────
+
+  /**
+   * Toggles game mode on or off. When active, all AI services are stopped to
+   * release VRAM for gaming. When deactivated, services are restarted.
+   * Emits 'game-mode-changed' with the new boolean state after the transition.
+   * @returns {Promise<{ gameModeActive: boolean }>}
+   */
+  ipcMain.handle('toggle-game-mode', async () => {
+    logger.info('IPC: toggle-game-mode');
+    try {
+      if (typeof gameModeApi.toggleGameMode === 'function') {
+        await gameModeApi.toggleGameMode();
+      }
+      return { gameModeActive: gameModeApi.getGameModeActive?.() ?? false };
+    } catch (err) {
+      logger.error(`IPC: toggle-game-mode failed — ${err.message}`);
+      return { gameModeActive: gameModeApi.getGameModeActive?.() ?? false };
+    }
+  });
+
+  /**
+   * Returns the current game mode state.
+   * @returns {{ gameModeActive: boolean }}
+   */
+  ipcMain.handle('get-game-mode', () => {
+    return { gameModeActive: gameModeApi.getGameModeActive?.() ?? false };
   });
 
   logger.info('IPC handlers registered (Phase 5)');
