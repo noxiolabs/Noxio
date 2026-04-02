@@ -18,7 +18,7 @@
 
 'use strict';
 
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell } = require('electron');
 const path = require('path');
 const { registerHandlers } = require('./ipc/handlers');
 const processManager = require('./infrastructure/process-manager');
@@ -60,6 +60,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#0f0f11',
     show: false, // revealed in 'ready-to-show' to avoid white flash
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,   // renderer cannot access Node APIs directly
@@ -159,6 +160,9 @@ async function startBackgroundServices(win) {
 
 app.whenReady().then(async () => {
   logger.info(`Noxio starting — Electron ${process.versions.electron}, Node ${process.versions.node}`);
+
+  // Remove the application menu bar completely
+  Menu.setApplicationMenu(null);
 
   const win = createWindow();
   registerHandlers(win);
