@@ -24,6 +24,7 @@ const fs = require('fs');
 const { registerHandlers } = require('./ipc/handlers');
 const processManager = require('./infrastructure/process-manager');
 const healthChecker = require('./infrastructure/health-checker');
+const orchestrator = require('./infrastructure/orchestrator');
 const { detectHardware } = require('./infrastructure/detector');
 const manifest = require('./infrastructure/manifest');
 const ollama = require('./services/ollama');
@@ -243,8 +244,11 @@ async function toggleGameMode(win) {
   logger.info(`Game mode: ${gameModeActive ? 'activated' : 'deactivated'}`);
 
   if (gameModeActive) {
-    // Stop all services to free GPU VRAM for gaming
-    healthChecker.stopPolling();
+    // Cancel any in-progress image generation before stopping services.
+    // This exits the polling loop within ~1s instead of hanging for up to 5 minutes.
+    orchestrator.cancelImageGeneration();
+    // Stop all services to free GPU VRAM for gaming.
+    // Health checker keeps running — service dots go red naturally, VRAM display stays live.
     await processManager.stopAll().catch((err) => {
       logger.error(`Game mode: failed to stop services — ${err.message}`);
     });
@@ -258,7 +262,6 @@ async function toggleGameMode(win) {
         logger.error(`Game mode: failed to restart Ollama — ${err.message}`);
       });
     }
-    healthChecker.startPolling(win);
     logger.info('Game mode: services restored');
   }
 

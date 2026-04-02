@@ -201,6 +201,9 @@ async function transitionFromGamingToCreate() {
 /** Concurrency guard — prevents two simultaneous inline image generation calls */
 let _imageGenerating = false;
 
+/** Abort signal object shared with the active generateImage call. Mutated to cancel mid-poll. */
+let _abortSignal = { cancelled: false };
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -288,6 +291,7 @@ async function generateImageWithVRAMSwap(prompt, style, quality, onProgress) {
   }
 
   _imageGenerating = true;
+  _abortSignal = { cancelled: false };
   logger.info(`orchestrator: generateImageWithVRAMSwap — style=${style}, quality=${quality}`);
 
   try {
@@ -308,17 +312,22 @@ async function generateImageWithVRAMSwap(prompt, style, quality, onProgress) {
 
   let imageDataUrl;
   try {
-    imageDataUrl = await comfyui.generateImage({ prompt, style, quality, onProgress });
+    imageDataUrl = await comfyui.generateImage({ prompt, style, quality, onProgress, abortSignal: _abortSignal });
   } finally {
-    // Always stop ComfyUI and resume Ollama, even on error
-    logger.info('orchestrator: inline gen done — stopping ComfyUI, resuming Ollama');
-    await comfyui.stop();
-    await processManager.startService('ollama');
-
-    try {
-      await waitForService('ollama', SERVICE_READY_TIMEOUT_MS);
-    } catch (err) {
-      logger.warn(`orchestrator: Ollama did not resume cleanly after inline gen — ${err.message}`);
+    if (_abortSignal.cancelled) {
+      // Cancelled by game mode — don't restart services; caller handles service state
+      logger.info('orchestrator: inline gen cancelled — skipping service restore');
+      await comfyui.stop().catch(() => {});
+    } else {
+      // Normal completion or error — stop ComfyUI and resume Ollama
+      logger.info('orchestrator: inline gen done — stopping ComfyUI, resuming Ollama');
+      await comfyui.stop();
+      await processManager.startService('ollama');
+      try {
+        await waitForService('ollama', SERVICE_READY_TIMEOUT_MS);
+      } catch (err) {
+        logger.warn(`orchestrator: Ollama did not resume cleanly after inline gen — ${err.message}`);
+      }
     }
   }
 
@@ -326,7 +335,20 @@ async function generateImageWithVRAMSwap(prompt, style, quality, onProgress) {
 
   } finally {
     _imageGenerating = false;
+    _abortSignal = { cancelled: false };
   }
 }
 
-module.exports = { switchMode, generateImageWithVRAMSwap };
+/**
+ * Cancels an in-progress image generation. Called by game mode before stopping services.
+ * Sets the abort signal so the polling loop exits on the next iteration (~1s).
+ * The orchestrator's finally block will skip the Ollama restart since game mode owns services.
+ */
+function cancelImageGeneration() {
+  if (_imageGenerating) {
+    _abortSignal.cancelled = true;
+    logger.info('orchestrator: image generation cancelled (game mode)');
+  }
+}
+
+module.exports = { switchMode, generateImageWithVRAMSwap, cancelImageGeneration };

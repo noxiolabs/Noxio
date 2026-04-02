@@ -362,7 +362,7 @@ async function stop() {
  * @returns {Promise<string>} Base64 data URL of the generated image (e.g. 'data:image/png;base64,...')
  * @throws {Error} If ComfyUI is unreachable, the job fails, or the image cannot be fetched
  */
-async function generateImage({ prompt, style, quality, onProgress }) {
+async function generateImage({ prompt, style, quality, onProgress, abortSignal }) {
   logger.info(`comfyui: generateImage — style=${style}, quality=${quality}`);
 
   // Verify ComfyUI is reachable before submitting
@@ -392,6 +392,9 @@ async function generateImage({ prompt, style, quality, onProgress }) {
   let history = null;
 
   while (attempts < MAX_POLL_ATTEMPTS) {
+    if (abortSignal?.cancelled) {
+      throw new Error('Image generation cancelled');
+    }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
     attempts += 1;
 

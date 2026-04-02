@@ -38,7 +38,7 @@ export default function ChatSection() {
     const contextWindow = Math.max(MIN_CTX, Math.min(MAX_CTX, Number(ctx) || 4096));
     const systemPrompt  = prompt.trim();
     try {
-      await window.electronAPI?.saveChatSettings({ contextWindow, systemPrompt });
+      await window.electronAPI?.saveChatSettings(contextWindow, systemPrompt);
       dispatch(updateChatSettings({ contextWindow, systemPrompt }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
