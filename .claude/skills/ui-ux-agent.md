@@ -176,3 +176,27 @@ export default function Sidebar() {
 - Loading states use friendly messages ("Warming up your AI...") not technical ones ("Starting Ollama process...")
 - Error messages tell the user what to do, not just what went wrong
 - Never use "simply" or "just" — nothing is simple to someone who doesn't know it
+
+---
+
+## AGENT REPORT
+
+When your task is complete, output this block:
+
+```
+---
+AGENT REPORT: UI/UX Designer
+TASK: [what was asked]
+STATUS: done | partial | blocked
+COMPLETED:
+- [components built/modified, screens designed]
+DECISIONS:
+- [design decisions made — colour, layout, interaction pattern choices]
+OBSIDIAN UPDATED:
+- ["none" — Documentation Agent handles Obsidian writes]
+BLOCKERS:
+- [missing Redux fields, IPC channels not yet implemented, or "none"]
+FOR PM:
+- [what Developer needs to wire up, any deviations from the Architect spec]
+---
+```

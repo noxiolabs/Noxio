@@ -105,3 +105,27 @@ RTX 5080 16GB VRAM (Blackwell sm_100) — ~15GB usable (display takes ~989MiB)
 AMD Ryzen 9 9950X3D
 Windows 11
 Secondary: GTX 1650 Super — NOT used for anything AI-related
+
+---
+
+## AGENT REPORT
+
+When your task is complete, output this block:
+
+```
+---
+AGENT REPORT: Architect
+TASK: [what was asked]
+STATUS: done | partial | blocked
+COMPLETED:
+- [decisions made, specs produced, contracts defined]
+DECISIONS:
+- [specific architectural decisions — include the "why"]
+OBSIDIAN UPDATED:
+- ["none" — Documentation Agent handles Obsidian writes for architect decisions]
+BLOCKERS:
+- [anything unresolved before Developer can proceed, or "none"]
+FOR PM:
+- [what the PM should hand to Developer or UI/UX next, with any inputs they need]
+---
+```

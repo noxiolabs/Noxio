@@ -1,0 +1,9 @@
+
+{
+  "mcpServers": {
+    "obsidian-noxio": {
+      "command": "cmd",
+      "args": ["/c", "npx", "@bitbonsai/mcpvault", "--vault", "E:/agentvault", "--project", "projects/noxio"]
+    }
+  }
+}

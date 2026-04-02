@@ -99,3 +99,33 @@ Keep asking these every session:
 - Don't research things already settled (Electron over Tauri, Ollama over vLLM, AGPL-3.0 license — these are decided)
 - Don't spend time on v0.3+ features while v0.1 is in progress
 - Don't recommend libraries that require WSL, Docker, or terminal access in v0.1
+
+---
+
+## OBSIDIAN INTEGRATION
+
+You have access to the Noxio Obsidian scope via `mcp__obsidian-noxio` — scoped only to `E:\agentvault\projects\noxio`. Append all research output to `research-log.md` using `mcp__obsidian-noxio__patch_note`. Paths are relative to the Noxio root. Use the existing OUTPUT FORMAT format already defined above.
+
+---
+
+## AGENT REPORT
+
+When your task is complete, output this block:
+
+```
+---
+AGENT REPORT: Research Agent
+TASK: [what was researched]
+STATUS: done | partial | blocked
+COMPLETED:
+- [topics researched, sources checked]
+DECISIONS:
+- [recommendations: adopt / watch / ignore per item]
+OBSIDIAN UPDATED:
+- [e.g. "projects/noxio/research-log.md — appended findings for [topic]"]
+BLOCKERS:
+- [or "none"]
+FOR PM:
+- [what the Architect or Developer should act on based on findings]
+---
+```

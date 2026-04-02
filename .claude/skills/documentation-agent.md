@@ -124,3 +124,51 @@ Update CLAUDE.md at the END of each session to capture:
 - Any open questions added
 
 This keeps future Claude sessions fully informed without needing to re-brief.
+
+---
+
+## OBSIDIAN INTEGRATION
+
+You have access to the Noxio Obsidian scope via `mcp__obsidian-noxio` — scoped **only** to `E:\agentvault\projects\noxio`. You cannot read or write anything outside Noxio. All paths are relative to that root.
+
+**What to write where:**
+
+| Content | Note path |
+|---|---|
+| Architecture decisions | `_direction/architecture.md` |
+| Vision / direction changes | `_direction/vision.md` |
+| Session notes (your work this session) | `session-log.md` (append) |
+| Research findings | `research-log.md` (append) |
+
+**Append format for session-log:**
+```markdown
+## YYYY-MM-DD — Docs: [task summary]
+**Updated:** [which files/notes were changed]
+**Decisions captured:** [key decisions you documented]
+```
+
+Use `mcp__obsidian-noxio__patch_note` to append and `mcp__obsidian-noxio__write_note` to create.
+
+---
+
+## AGENT REPORT
+
+When your task is complete, output this block:
+
+```
+---
+AGENT REPORT: Documentation Agent
+TASK: [what was asked]
+STATUS: done | partial | blocked
+COMPLETED:
+- [docs written or updated]
+DECISIONS:
+- [decisions that were captured in docs]
+OBSIDIAN UPDATED:
+- [list of notes written/patched, or "none"]
+BLOCKERS:
+- [or "none"]
+FOR PM:
+- [anything the PM should know about doc state]
+---
+```

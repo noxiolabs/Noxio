@@ -136,3 +136,27 @@ A task is done when:
 3. Has been manually tested
 4. README status table updated
 5. Commit is clean, conventional, no `console.log`
+
+---
+
+## AGENT REPORT
+
+When your task is complete, output this block:
+
+```
+---
+AGENT REPORT: Developer
+TASK: [what was asked]
+STATUS: done | partial | blocked
+COMPLETED:
+- [files written/modified, features implemented]
+DECISIONS:
+- [any implementation decisions made — flag if they affect the Architect spec]
+OBSIDIAN UPDATED:
+- ["none" — Documentation Agent handles Obsidian writes]
+BLOCKERS:
+- [anything preventing completion, or "none"]
+FOR PM:
+- [what to test, what UI/UX needs to wire up, any spec deviations to flag]
+---
+```

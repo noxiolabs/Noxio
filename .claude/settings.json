@@ -1,0 +1,9 @@
+﻿{
+  "mcpServers": {
+    "obsidian-noxio": {
+      "command": "npx",
+      "args": ["-y", "@bitbonsai/mcpvault", "E:/agentvault/projects/noxio"]
+    }
+  },
+  "disabledMcpServers": ["obsidian-global", "obsidian-full"]
+}
