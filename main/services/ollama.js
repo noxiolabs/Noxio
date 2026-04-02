@@ -222,14 +222,16 @@ async function deleteModel(name) {
  * Streams a chat completion from Ollama directly to the renderer via IPC events.
  * Sends 'stream-token' for each content chunk and 'stream-complete' when done.
  *
- * CRITICAL: always passes num_ctx: 4096 to prevent OOM on 16GB VRAM + 14B models.
+ * CRITICAL: always passes num_ctx with a minimum safe value (default 4096) to prevent OOM
+ * on 16GB VRAM + 14B models. Respects user-configured contextWindow if provided and safe.
  *
  * @param {string} model - Model name e.g. 'qwen2.5:14b'
  * @param {Array<{role: string, content: string}>} messages - Conversation history
  * @param {import('electron').BrowserWindow} win - Window to send IPC events to
+ * @param {{systemPrompt?: string, contextWindow?: number}} options - Chat settings
  * @returns {Promise<void>}
  */
-async function generateStream(model, messages, win) {
+async function generateStream(model, messages, win, options = {}) {
   // Abort any in-flight stream
   if (_currentController) {
     _currentController.abort();
@@ -249,11 +251,24 @@ async function generateStream(model, messages, win) {
 
   logger.info(`ollama: generateStream — model: ${model}, messages: ${messages.length}`);
 
+  // Sanitize context window: clamp between 512 and 32768, default to 4096 if not provided
+  const contextWindow = options.contextWindow ?? 4096;
+  const safeContextWindow = Math.max(512, Math.min(32768, contextWindow));
+
+  // Build messages array with optional system prompt prepended
+  let messagesWithSystem = messages;
+  if (options.systemPrompt && typeof options.systemPrompt === 'string' && options.systemPrompt.trim()) {
+    messagesWithSystem = [
+      { role: 'system', content: options.systemPrompt },
+      ...messages,
+    ];
+  }
+
   const body = JSON.stringify({
     model,
-    messages,
+    messages: messagesWithSystem,
     stream: true,
-    options: { num_ctx: 4096 },
+    options: { num_ctx: safeContextWindow },
   });
 
   return new Promise((resolve, reject) => {

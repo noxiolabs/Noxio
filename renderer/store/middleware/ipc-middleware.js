@@ -19,7 +19,7 @@ import {
 } from '../slices/infrastructure';
 import { appendStreamToken, finaliseStream, hydrateConversations } from '../slices/chat';
 import { setManifest } from '../slices/manifest';
-import { setPullProgress, clearPullProgress } from '../slices/settings';
+import { setPullProgress, clearPullProgress, hydrateSettings, updateChatSettings, updateVoiceSettings, updateUI } from '../slices/settings';
 
 /**
  * Sets up all main→renderer IPC event listeners and wires them to Redux actions.
@@ -123,6 +123,47 @@ export function setupIpcListeners(store) {
     clearTimeout(_saveChatTimer);
     _saveChatTimer = setTimeout(() => {
       api.saveChatHistory({ conversations }).catch(() => {});
+    }, 500);
+  });
+
+  // ─── Settings persistence ────────────────────────────────────────────────
+
+  // Load persisted settings once on app startup
+  api.getSettings().then((data) => {
+    if (data && typeof data === 'object' && !data.error) {
+      store.dispatch(hydrateSettings(data));
+    }
+  }).catch(() => {
+    // Non-fatal — defaults are already in initialState
+  });
+
+  // Save settings to disk whenever they change, debounced 500ms
+  // Only persists user-configurable settings: chat, voice, ui, models, selectedCapabilities
+  // Excludes transient/setup state: _settingsPanel, setupComplete, servicePaths, installedServices, installDir
+  let _saveSettingsTimer = null;
+  let _lastSavedSettings = null;
+  store.subscribe(() => {
+    const settings = store.getState().settings;
+    // Only track user-configurable settings, not transient state
+    const settingsToSave = {
+      chat: settings.chat,
+      voice: settings.voice,
+      ui: settings.ui,
+      models: settings.models,
+      selectedCapabilities: settings.selectedCapabilities,
+    };
+    const settingsJson = JSON.stringify(settingsToSave);
+    if (settingsJson === _lastSavedSettings) return;
+    _lastSavedSettings = settingsJson;
+    clearTimeout(_saveSettingsTimer);
+    _saveSettingsTimer = setTimeout(() => {
+      // Save chat and voice via their dedicated handlers, which validate and persist
+      if (settings.chat) {
+        api.saveChatSettings(settings.chat.contextWindow, settings.chat.systemPrompt).catch(() => {});
+      }
+      if (settings.voice) {
+        api.saveVoiceSettings(settings.voice.sttLanguage, settings.voice.ttsVoice).catch(() => {});
+      }
     }, 500);
   });
 }

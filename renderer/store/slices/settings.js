@@ -221,6 +221,27 @@ const settingsSlice = createSlice({
       state._settingsPanel.pullPercent = 0;
     },
 
+    /**
+     * Hydrates all persisted user settings from electron-store.
+     * Merges loaded settings with defaults, preserving any unset fields.
+     * Dispatched once at app startup by ipc-middleware after calling get-settings.
+     * @param {Object} action.payload - Settings object from electron-store
+     */
+    hydrateSettings(state, action) {
+      const loaded = action.payload ?? {};
+
+      // Merge loaded settings with defaults, only updating fields that were persisted
+      if (loaded.models) Object.assign(state.models, loaded.models);
+      if (loaded.installDir !== undefined) state.installDir = loaded.installDir;
+      if (loaded.servicePaths) Object.assign(state.servicePaths, loaded.servicePaths);
+      if (loaded.installedServices) Object.assign(state.installedServices, loaded.installedServices);
+      if (loaded.selectedCapabilities) state.selectedCapabilities = loaded.selectedCapabilities;
+      if (loaded.ui) Object.assign(state.ui, loaded.ui);
+      if (loaded.voice) Object.assign(state.voice, loaded.voice);
+      if (loaded.chat) Object.assign(state.chat, loaded.chat);
+      if (loaded.setupComplete !== undefined) state.setupComplete = loaded.setupComplete;
+    },
+
   },
 });
 
@@ -238,6 +259,7 @@ export const {
   closeSettingsPanel,
   setPullProgress,
   clearPullProgress,
+  hydrateSettings,
 } = settingsSlice.actions;
 
 export default settingsSlice.reducer;

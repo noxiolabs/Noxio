@@ -52,18 +52,6 @@ const Store = require('electron-store');
 const store = new Store({ name: 'noxio-settings' });
 
 /**
- * Checks if a command is available on PATH by attempting to run it.
- * @param {string} cmd
- * @param {string[]} args
- * @returns {Promise<boolean>}
- */
-function commandExists(cmd, args) {
-  return new Promise((resolve) => {
-    execFile(cmd, args, { timeout: 5000, windowsHide: true }, (err) => resolve(!err));
-  });
-}
-
-/**
  * Registers all IPC handlers. Must be called once after the BrowserWindow is created
  * so that mainWindow is available for push events (main → renderer).
  *
@@ -146,11 +134,6 @@ function registerHandlers(mainWindow) {
     ]);
     const ollamaInstalled = ollamaInstallResult.installed;
 
-    // ── Python (recommended — needed for LiteLLM/Whisper/Kokoro) ─────────
-    const pythonOk = (await commandExists('python', ['--version']))
-      || (await commandExists('python3', ['--version']))
-      || (await commandExists('py', ['--version']));
-
     // ── GPU (informational) ───────────────────────────────────────────────
     let gpuName = null;
     let gpuOk = false;
@@ -170,13 +153,6 @@ function registerHandlers(mainWindow) {
           : ollamaInstalled
             ? 'Installed — will be started automatically'
             : 'Not installed — will be installed automatically',
-        link: null,
-      },
-      python: {
-        ok: pythonOk,
-        required: false,
-        label: 'Python 3.11+',
-        note: pythonOk ? 'Found on PATH' : 'Not found — will be installed automatically',
         link: null,
       },
       gpu: {
@@ -511,9 +487,11 @@ function registerHandlers(mainWindow) {
    *   messages: Array<{role: string, content: string}>,
    *   model: string,
    *   conversationId: string,
+   *   systemPrompt?: string,
+   *   contextWindow?: number,
    * }} payload
    */
-  ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId } = {}) => {
+  ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId, systemPrompt, contextWindow } = {}) => {
     try {
       logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}`);
 
@@ -525,7 +503,7 @@ function registerHandlers(mainWindow) {
         });
       }
 
-      await ollama.generateStream(model, messages, mainWindow);
+      await ollama.generateStream(model, messages, mainWindow, { systemPrompt, contextWindow });
     } catch (err) {
       logger.error(`IPC: send-chat-message error — ${err.message}\n${err.stack}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -574,7 +552,7 @@ function registerHandlers(mainWindow) {
     try {
       const onProgress = (percent) => {
         if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('image-progress', percent);
+          mainWindow.webContents.send('image-progress', { percent });
         }
       };
 
@@ -814,10 +792,13 @@ function registerHandlers(mainWindow) {
     try {
       logger.info('IPC: save-voice-settings');
 
-      store.set('settings.voice', {
-        sttLanguage: sttLanguage ?? '',
-        ttsVoice: ttsVoice ?? '',
-      });
+      const voiceSettings = {
+        sttLanguage: sttLanguage ?? 'auto',
+        ttsVoice: ttsVoice ?? 'af_sky',
+      };
+
+      store.set('settings.voice', voiceSettings);
+      logger.info(`IPC: voice settings saved — STT: ${voiceSettings.sttLanguage}, TTS: ${voiceSettings.ttsVoice}`);
 
       return { success: true };
     } catch (err) {
@@ -844,10 +825,13 @@ function registerHandlers(mainWindow) {
         };
       }
 
-      store.set('settings.chat', {
+      const chatSettings = {
         contextWindow: ctx,
         systemPrompt: typeof systemPrompt === 'string' ? systemPrompt : '',
-      });
+      };
+
+      store.set('settings.chat', chatSettings);
+      logger.info(`IPC: chat settings saved — contextWindow: ${ctx}, systemPrompt: ${chatSettings.systemPrompt.length} chars`);
 
       return { success: true };
     } catch (err) {

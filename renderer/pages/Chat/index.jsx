@@ -31,6 +31,8 @@ export default function ChatPanel() {
   const activeId      = useSelector((s) => s.chat.activeConversationId);
   const selectedModel = useSelector((s) => s.chat.selectedModel);
   const streaming     = useSelector((s) => s.chat.streaming);
+  const systemPrompt = useSelector((s) => s.settings.chat.systemPrompt);
+  const contextWindow = useSelector((s) => s.settings.chat.contextWindow);
   const [input, setInput]         = useState('');
   const [streamError, setStreamError] = useState('');
   const prevStreamingRef = useRef(false);
@@ -94,6 +96,8 @@ export default function ChatPanel() {
         model: selectedModel,
         conversationId: convId,
         messages,
+        systemPrompt,
+        contextWindow,
       });
     }
 
