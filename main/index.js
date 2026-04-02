@@ -37,6 +37,12 @@ const store = new Store({ name: 'noxio-settings' });
 // tries to read or write it.
 manifest.initManifest(store);
 
+// Handle --reset-setup CLI flag for development: clears setupComplete to rerun the setup wizard
+if (process.argv.includes('--reset-setup')) {
+  store.set('settings.setupComplete', false);
+  logger.info('--reset-setup flag detected: cleared setupComplete, setup wizard will run on next launch');
+}
+
 const isDev = process.env.NODE_ENV === 'development';
 
 /** @type {BrowserWindow|null} */
