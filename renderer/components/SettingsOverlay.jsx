@@ -12,16 +12,18 @@
 import React, { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { openSettingsPanel, closeSettingsPanel } from '../store/slices/settings';
-import ModelsSection     from './settings/ModelsSection';
-import VoiceSection      from './settings/VoiceSection';
-import ChatSection       from './settings/ChatSection';
-import AppearanceSection from './settings/AppearanceSection';
+import ModelsSection        from './settings/ModelsSection';
+import VoiceSection         from './settings/VoiceSection';
+import ChatSection          from './settings/ChatSection';
+import AppearanceSection    from './settings/AppearanceSection';
+import CapabilitiesSection  from './settings/CapabilitiesSection';
 
 const SECTIONS = [
-  { key: 'models',     label: 'Models'     },
-  { key: 'voice',      label: 'Voice'      },
-  { key: 'chat',       label: 'Chat'       },
-  { key: 'appearance', label: 'Appearance' },
+  { key: 'capabilities', label: 'Capabilities' },
+  { key: 'models',       label: 'Models'       },
+  { key: 'voice',        label: 'Voice'        },
+  { key: 'chat',         label: 'Chat'         },
+  { key: 'appearance',   label: 'Appearance'   },
 ];
 
 /**
@@ -32,11 +34,12 @@ const SECTIONS = [
  */
 function SectionContent({ section }) {
   switch (section) {
-    case 'models':     return <ModelsSection />;
-    case 'voice':      return <VoiceSection />;
-    case 'chat':       return <ChatSection />;
-    case 'appearance': return <AppearanceSection />;
-    default:           return <ModelsSection />;
+    case 'capabilities': return <CapabilitiesSection />;
+    case 'models':       return <ModelsSection />;
+    case 'voice':        return <VoiceSection />;
+    case 'chat':         return <ChatSection />;
+    case 'appearance':   return <AppearanceSection />;
+    default:             return <CapabilitiesSection />;
   }
 }
 

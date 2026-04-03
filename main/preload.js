@@ -93,6 +93,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startInstallation: (config) => ipcRenderer.invoke('start-installation', config),
 
   /**
+   * Installs a capability not selected during the initial setup wizard.
+   * Reuses the full installer with idempotency — already-installed services are skipped.
+   * Progress arrives via 'install-progress' events, errors via 'install-error'.
+   * @param {string} capability - e.g. 'image', 'chat', 'coding'
+   * @param {string} [model] - Required for LLM capabilities; not needed for 'image'
+   * @returns {Promise<{success: boolean}>}
+   */
+  installAdditionalCapability: (capability, model) =>
+    ipcRenderer.invoke('install-additional-capability', { capability, model }),
+
+  /**
    * Returns available filesystem drives with size information.
    * @returns {Promise<Array<{letter: string, label: string, totalGB: number, freeGB: number}>>}
    */

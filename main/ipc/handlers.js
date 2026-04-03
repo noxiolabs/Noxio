@@ -241,6 +241,50 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
     }
   });
 
+  /**
+   * Installs a single capability that wasn't selected during the initial setup wizard.
+   * Reuses the existing installer — already-installed services are skipped automatically.
+   * On success, appends the capability to selectedCapabilities in electron-store.
+   *
+   * Emits the same events as start-installation:
+   *   install-progress, install-error, install-service-complete
+   *
+   * @param {{ capability: string, model?: string }} payload
+   * @returns {Promise<{success: boolean}>}
+   */
+  ipcMain.handle('install-additional-capability', async (_event, { capability, model } = {}) => {
+    try {
+      logger.info(`IPC: install-additional-capability — capability: ${capability}, model: ${model}`);
+      const installDir = store.get('settings.installDir');
+      if (!installDir) {
+        logger.error('IPC: install-additional-capability — no installDir in store');
+        return { success: false, error: 'Install directory not set' };
+      }
+      const installedServices = store.get('settings.installedServices', {});
+      const models = model ? { [capability]: model } : {};
+
+      const result = await runInstallation({
+        capabilities: [capability],
+        models,
+        installDir,
+        installedServices,
+        mainWindow,
+      });
+
+      if (result.success) {
+        const existing = store.get('settings.selectedCapabilities', []);
+        if (!existing.includes(capability)) {
+          store.set('settings.selectedCapabilities', [...existing, capability]);
+        }
+      }
+
+      return result;
+    } catch (err) {
+      logger.error(`IPC: install-additional-capability failed — ${err.message}\n${err.stack}`);
+      return { success: false };
+    }
+  });
+
   // ─── Install directory helpers ────────────────────────────────────────────
 
   /**

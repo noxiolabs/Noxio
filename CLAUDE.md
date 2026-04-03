@@ -186,6 +186,13 @@ RTX 5080: 16GB VRAM, display consumes ~989MiB → ~15GB usable → effective tie
 
 ## Branch Strategy
 
+**MANDATORY: Never commit development work directly to `main`. Always create a branch before starting any work.**
+
+Before writing any code:
+1. Check current branch: `git branch`
+2. If on `main`, create and switch: `git checkout -b feature/[name]` or `fix/[name]`
+3. Only merge to `main` via PR after review — owner only
+
 | Branch | Purpose | Who merges |
 |---|---|---|
 | main | Stable, tagged releases only | Owner only |
@@ -401,22 +408,18 @@ All installed with `pip install --upgrade`.
 
 ## Remaining Open Items (pre-v0.1)
 
-These are not yet fixed. Everything else from the 2026-03-25 audit has been resolved.
+_Last updated: 2026-04-03. Items below are genuinely open — completed items have been removed._
 
 | # | Priority | Finding | File |
 |---|---|---|---|
-| W3 | MEDIUM | Progress dots show 6 positions but `TOTAL_STEPS = 8`. | `renderer/pages/Setup/index.jsx` |
-| W6 | LOW | ModelsScreen JSDoc says "Screen 4", ReadyScreen says "Screen 6". Both are wrong. | `Setup/ModelsScreen.jsx`, `ReadyScreen.jsx` |
 | W7 | HIGH | No way to add capabilities post-wizard. Needs `install-additional-capability` IPC handler + "Manage capabilities" section in Settings. | `main/ipc/handlers.js`, `SettingsOverlay.jsx` |
 | S2 | MEDIUM | No Services/Capabilities section in Settings. Users can't see installed services or add new ones. | `renderer/components/SettingsOverlay.jsx` |
-| S3 | MEDIUM | `openExternal` not exposed in preload — API key URLs in CloudSection are plain text only. | `main/preload.js`, `CloudSection.jsx` |
-| S6 | MEDIUM | `settings.chat.contextWindow` persisted but `ollama.js` always uses hardcoded `num_ctx: 4096`. Setting has no effect. | `main/services/ollama.js`, `ChatSection.jsx` |
 | N4 | LOW | Settings gear always opens on Models tab. Should remember last active section. | `renderer/components/Sidebar.jsx` |
 | C5 | LOW | Code blocks in MessageBubble have no copy-to-clipboard button. | `Chat/MessageBubble.jsx` |
 | C6 | LOW | Conversations can't be renamed. Add inline double-click rename. | `Chat/ConversationSidebar.jsx` |
-| C7 | LOW | Cloud routing button in ChatInput has no label or tooltip. | `Chat/ChatInput.jsx` |
-| CR4 | LOW | Save image uses `<a>` tag hack. Should use native save dialog via `save-image` IPC. | `Create/ImageGallery.jsx` |
 | CR5 | LOW | No negative prompt field. Add expandable Advanced section. | `Create/index.jsx` |
+
+_Resolved since last update: W3 (progress dots), W6 (JSDoc screen numbers), S3 (openExternal — cloud removed), S6 (context length wired), C7 (cloud button — cloud removed), CR4 (save image confirmed working)._
 
 ---
 
