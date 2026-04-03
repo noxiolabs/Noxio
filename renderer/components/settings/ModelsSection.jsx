@@ -20,11 +20,12 @@ export default function ModelsSection() {
   // Live service statuses from health checker — always accurate, no manifest needed
   const liveServices   = useSelector((s) => s.infrastructure.services);
 
-  const [models,      setModels]      = useState([]);
-  const [pullInput,   setPullInput]   = useState('');
-  const [pullError,   setPullError]   = useState('');
-  const [deleteError, setDeleteError] = useState('');
-  const [loading,     setLoading]     = useState(true);
+  const [models,        setModels]        = useState([]);
+  const [pullInput,     setPullInput]     = useState('');
+  const [pullError,     setPullError]     = useState('');
+  const [deleteError,   setDeleteError]   = useState('');
+  const [loading,       setLoading]       = useState(true);
+  const [deletingModel, setDeletingModel] = useState(null); // modelId currently being deleted
 
   /** Fetches models directly from Ollama (live list). */
   async function loadManifest() {
@@ -66,11 +67,20 @@ export default function ModelsSection() {
   /** Sends a delete-model IPC request and refreshes the list on success. */
   async function handleDelete(modelId) {
     setDeleteError('');
+    setDeletingModel(modelId);
     try {
-      await window.electronAPI?.deleteModel({ model: modelId });
-      await loadManifest();
+      const result = await window.electronAPI?.deleteModel(modelId);
+      if (result && !result.success) {
+        setDeleteError(`Failed to delete ${modelId}: ${result.error ?? 'unknown error'}`);
+      } else {
+        // Pre-fill the pull input so the user can re-download with one click
+        setPullInput(modelId);
+        await loadManifest();
+      }
     } catch (err) {
       setDeleteError(`Failed to delete ${modelId}: ${err?.message ?? 'unknown error'}`);
+    } finally {
+      setDeletingModel(null);
     }
   }
 
@@ -80,7 +90,7 @@ export default function ModelsSection() {
     if (!modelName || pullInProgress) return;
     setPullError('');
     try {
-      await window.electronAPI?.pullModel({ model: modelName });
+      await window.electronAPI?.pullModel(modelName);
       setPullInput('');
     } catch (err) {
       setPullError(`Pull failed: ${err?.message ?? 'unknown error'}`);
@@ -121,9 +131,10 @@ export default function ModelsSection() {
             </div>
             <button
               onClick={() => handleDelete(modelId)}
-              className="text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+              disabled={deletingModel === modelId || !!pullInProgress}
+              className="text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-1 rounded hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Delete
+              {deletingModel === modelId ? 'Deleting…' : 'Delete'}
             </button>
           </div>
         ))}
@@ -134,7 +145,9 @@ export default function ModelsSection() {
 
       {/* Pull new model */}
       <div>
-        <h3 className="text-sm font-semibold text-zinc-300 mb-2">Pull a model</h3>
+        <h3 className="text-sm font-semibold text-zinc-300 mb-2">
+          {pullInput ? 'Re-download model' : 'Pull a model'}
+        </h3>
         <div className="flex gap-2">
           <input
             type="text"
