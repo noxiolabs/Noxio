@@ -19,6 +19,7 @@ export default function ModelsSection() {
   const pullPercent    = useSelector((s) => s.settings._settingsPanel.pullPercent);
   // Live service statuses from health checker — always accurate, no manifest needed
   const liveServices   = useSelector((s) => s.infrastructure.services);
+  const ollamaStatus   = useSelector((s) => s.infrastructure.services?.ollama?.status);
 
   const [models,        setModels]        = useState([]);
   const [pullInput,     setPullInput]     = useState('');
@@ -64,6 +65,16 @@ export default function ModelsSection() {
     prevPullRef.current = pullInProgress;
   }, [pullInProgress]);
 
+  // Auto-refresh model list when Ollama transitions to 'running' — covers the case where
+  // Ollama was still starting when the settings panel was opened and the list came back empty.
+  const prevOllamaRef = React.useRef(ollamaStatus);
+  useEffect(() => {
+    if (prevOllamaRef.current !== 'running' && ollamaStatus === 'running') {
+      loadManifest();
+    }
+    prevOllamaRef.current = ollamaStatus;
+  }, [ollamaStatus]);
+
   /** Sends a delete-model IPC request and refreshes the list on success. */
   async function handleDelete(modelId) {
     setDeleteError('');
@@ -103,11 +114,21 @@ export default function ModelsSection() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-base font-semibold text-white mb-1">Installed Models</h2>
-        <p className="text-xs text-zinc-500">
-          Ollama models installed on this machine. Delete to free disk space.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-white mb-1">Installed Models</h2>
+          <p className="text-xs text-zinc-500">
+            Ollama models installed on this machine. Delete to free disk space.
+          </p>
+        </div>
+        <button
+          onClick={loadManifest}
+          disabled={loading}
+          title="Refresh model list"
+          className="mt-0.5 p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-40"
+        >
+          <RefreshIcon spinning={loading} />
+        </button>
       </div>
 
       {/* Model list */}
@@ -223,5 +244,20 @@ export default function ModelsSection() {
         </div>
       </div>
     </div>
+  );
+}
+
+function RefreshIcon({ spinning }) {
+  return (
+    <svg
+      width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      style={spinning ? { animation: 'spin 1s linear infinite' } : undefined}
+    >
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
   );
 }

@@ -32,6 +32,7 @@ const TTS_VOICES = [
 export default function VoiceSection() {
   const dispatch        = useDispatch();
   const voice           = useSelector((s) => s.settings.voice);
+  const voiceSelected   = useSelector((s) => s.settings.selectedCapabilities?.includes('voice') ?? false);
   const whisperInstalled = useSelector((s) => s.settings.installedServices?.whisper ?? false);
   const [lang,     setLang]    = useState(voice.sttLanguage);
   const [ttsVoice, setTtsVoice] = useState(voice.ttsVoice);
@@ -44,7 +45,7 @@ export default function VoiceSection() {
     setError('');
     setSaved(false);
     try {
-      await window.electronAPI?.saveVoiceSettings({ sttLanguage: lang, ttsVoice });
+      await window.electronAPI?.saveVoiceSettings(lang, ttsVoice);
       dispatch(updateVoiceSettings({ sttLanguage: lang, ttsVoice }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -55,7 +56,7 @@ export default function VoiceSection() {
     }
   }
 
-  if (!whisperInstalled) {
+  if (!voiceSelected || !whisperInstalled) {
     return (
       <div className="flex flex-col gap-4">
         <div>
