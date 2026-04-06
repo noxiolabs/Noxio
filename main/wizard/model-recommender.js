@@ -2,10 +2,11 @@
  * @file model-recommender.js
  * @description VRAM-aware model recommendation algorithm. Given a VRAM tier and
  * selected capabilities, returns the best available model for each capability.
- * Also provides an alternatives list — all models from equal-or-lower VRAM tiers —
- * so the wizard can offer a swap dropdown without exceeding the user's GPU budget.
+ * Also provides an alternatives catalog — all models from equal-or-lower VRAM
+ * tiers across multiple model families — so the wizard and settings can offer
+ * a rich swap dropdown without exceeding the user's GPU budget.
  *
- * Recommendation table (from CLAUDE.md):
+ * Recommendation table (recommended defaults per tier):
  *   Tier       Chat              Coding                  Image
  *   18GB+      qwen2.5:32b       qwen2.5-coder:14b       FLUX.1-dev-fp8
  *   10–18GB    qwen2.5:14b       qwen2.5-coder:14b       FLUX.1-schnell-fp8
@@ -13,7 +14,8 @@
  *   3–6GB      qwen2.5:3b        qwen2.5-coder:3b        SDXL 4-bit
  *   <3GB       Cloud recommended Cloud recommended        Cloud recommended
  *
- * TODO Phase 3: wire to wizard UI and real hardware data from hardware-scan.js.
+ * Alternatives catalog adds Gemma 3, Llama 3.2, Phi 4, Mistral Nemo,
+ * and DeepSeek Coder V2 so users can pick across model families.
  */
 
 'use strict';
@@ -57,6 +59,182 @@ const RECOMMENDATIONS = {
 };
 
 /**
+ * Curated list of alternative models per capability, tagged with the minimum
+ * VRAM tier required to run them. `getAlternatives()` filters this list to only
+ * include models that fit within the user's GPU budget.
+ *
+ * Each entry:
+ *   model   — Ollama model tag (e.g. 'gemma3:12b')
+ *   label   — Human-readable display name shown in the wizard dropdown
+ *   sizeGB  — Approximate download/disk size in GB
+ *   minTier — Minimum VRAM tier needed ('18+' | '10-18' | '6-10' | '3-6')
+ *   notes   — Optional short note surfaced in the UI (context window, strengths, etc.)
+ *
+ * @type {Record<'chat'|'coding', Array<{model:string, label:string, sizeGB:number, minTier:string, notes?:string}>>}
+ */
+const ALTERNATIVES_CATALOG = {
+  chat: [
+    // ── 18GB+ tier ────────────────────────────────────────────────────────────
+    {
+      model: 'gemma3:27b',
+      label: 'Gemma 3 27B',
+      sizeGB: 17.0,
+      minTier: '18+',
+      notes: '128K context · vision',
+    },
+
+    // ── 10–18GB tier ──────────────────────────────────────────────────────────
+    {
+      model: 'gemma3:12b',
+      label: 'Gemma 3 12B',
+      sizeGB: 8.1,
+      minTier: '10-18',
+      notes: '128K context · vision',
+    },
+    {
+      model: 'gemma3:12b-it-qat',
+      label: 'Gemma 3 12B QAT',
+      sizeGB: 5.4,
+      minTier: '10-18',
+      notes: '128K context · smaller footprint, similar quality',
+    },
+    {
+      model: 'phi4',
+      label: 'Phi 4 14B',
+      sizeGB: 9.1,
+      minTier: '10-18',
+      notes: 'Strong reasoning',
+    },
+    {
+      model: 'mistral-nemo',
+      label: 'Mistral Nemo 12B',
+      sizeGB: 7.1,
+      minTier: '10-18',
+      notes: 'Fast · multilingual',
+    },
+
+    // ── 6–10GB tier ───────────────────────────────────────────────────────────
+    {
+      model: 'mistral:7b',
+      label: 'Mistral 7B',
+      sizeGB: 4.1,
+      minTier: '6-10',
+      notes: 'Fast · well-rounded',
+    },
+    {
+      model: 'llama3.1:8b',
+      label: 'Llama 3.1 8B',
+      sizeGB: 4.9,
+      minTier: '6-10',
+      notes: '128K context',
+    },
+    {
+      model: 'gemma3:4b',
+      label: 'Gemma 3 4B',
+      sizeGB: 3.3,
+      minTier: '6-10',
+      notes: '128K context · vision',
+    },
+
+    // ── 3–6GB tier ────────────────────────────────────────────────────────────
+    {
+      model: 'gemma3:4b-it-qat',
+      label: 'Gemma 3 4B QAT',
+      sizeGB: 2.0,
+      minTier: '3-6',
+      notes: '128K context · smaller footprint',
+    },
+    {
+      model: 'phi4-mini',
+      label: 'Phi 4 Mini 3.8B',
+      sizeGB: 2.5,
+      minTier: '3-6',
+      notes: 'Strong reasoning for its size',
+    },
+    {
+      model: 'llama3.2:3b',
+      label: 'Llama 3.2 3B',
+      sizeGB: 2.0,
+      minTier: '3-6',
+      notes: '128K context',
+    },
+  ],
+
+  coding: [
+    // ── 18GB+ tier ────────────────────────────────────────────────────────────
+    {
+      model: 'qwen2.5-coder:32b',
+      label: 'Qwen 2.5 Coder 32B',
+      sizeGB: 20.0,
+      minTier: '18+',
+      notes: 'Best-in-class coding',
+    },
+    {
+      model: 'deepseek-r1:14b',
+      label: 'DeepSeek R1 14B',
+      sizeGB: 9.0,
+      minTier: '18+',
+      notes: 'Strong reasoning + code',
+    },
+
+    // ── 10–18GB tier ──────────────────────────────────────────────────────────
+    {
+      model: 'deepseek-coder-v2:16b',
+      label: 'DeepSeek Coder V2 16B',
+      sizeGB: 9.1,
+      minTier: '10-18',
+      notes: 'Specialized coding model',
+    },
+    {
+      model: 'gemma3:12b',
+      label: 'Gemma 3 12B',
+      sizeGB: 8.1,
+      minTier: '10-18',
+      notes: '128K context · good general coding',
+    },
+    {
+      model: 'phi4',
+      label: 'Phi 4 14B',
+      sizeGB: 9.1,
+      minTier: '10-18',
+      notes: 'Strong at code + math',
+    },
+
+    // ── 6–10GB tier ───────────────────────────────────────────────────────────
+    {
+      model: 'codellama:13b',
+      label: 'Code Llama 13B',
+      sizeGB: 7.4,
+      minTier: '6-10',
+      notes: 'Meta\'s dedicated coding model',
+    },
+    {
+      model: 'gemma3:4b',
+      label: 'Gemma 3 4B',
+      sizeGB: 3.3,
+      minTier: '6-10',
+      notes: '128K context',
+    },
+
+    // ── 3–6GB tier ────────────────────────────────────────────────────────────
+    {
+      model: 'phi4-mini',
+      label: 'Phi 4 Mini 3.8B',
+      sizeGB: 2.5,
+      minTier: '3-6',
+      notes: 'Solid code for its size',
+    },
+    {
+      model: 'llama3.2:3b',
+      label: 'Llama 3.2 3B',
+      sizeGB: 2.0,
+      minTier: '3-6',
+      notes: '128K context',
+    },
+  ],
+};
+
+/**
  * Returns model recommendations for the given VRAM tier and selected capabilities.
  * @param {string} vramTier - '18+' | '10-18' | '6-10' | '3-6' | '<3'
  * @param {string[]} capabilities - subset of ['chat', 'coding', 'image', 'voice']
@@ -77,49 +255,46 @@ function recommend(vramTier, capabilities) {
 
 /**
  * Returns all alternative models for a given capability that fit within the user's
- * VRAM tier (i.e., models from lower-VRAM tiers, which are guaranteed to fit).
- * The recommended model for the given tier is excluded — it is the default and
- * will be shown separately in the UI.
+ * VRAM tier. Sources from the multi-family ALTERNATIVES_CATALOG rather than just
+ * lower-tier Qwen variants, so the user gets real choice across model families.
  *
- * Models from higher tiers are never included, as they would not fit in VRAM.
- * Voice capability has no alternatives (it always uses faster-whisper + kokoro).
+ * The recommended model for the given tier is excluded — it is the default and
+ * will be shown separately in the UI. Voice capability has no alternatives.
  *
  * @param {string} vramTier - '18+' | '10-18' | '6-10' | '3-6' | '<3'
  * @param {string} capability - 'chat' | 'coding' | 'image' | 'voice'
- * @returns {Array<{model: string, sizeGB: number, tier: string}>}
+ * @returns {Array<{model: string, label: string, sizeGB: number, tier: string, notes?: string}>}
  */
 function getAlternatives(vramTier, capability) {
-  if (capability === 'voice') return [];
+  if (capability === 'voice' || capability === 'image') return [];
 
   const userTierIndex = TIER_ORDER.indexOf(vramTier);
   if (userTierIndex === -1) return [];
 
-  // The recommended model for the user's own tier — we exclude it from alternatives
-  // since it is already shown as the default selection.
+  const catalog = ALTERNATIVES_CATALOG[capability] ?? [];
+  if (!catalog.length) return [];
+
+  // The recommended model for the user's own tier — exclude from alternatives list
   const ownTierRec = (RECOMMENDATIONS[vramTier] || {})[capability];
   const recommendedModel = ownTierRec ? ownTierRec.model : null;
 
-  const alternatives = [];
+  return catalog.filter((entry) => {
+    // Must fit within the user's VRAM tier
+    const entryTierIndex = TIER_ORDER.indexOf(entry.minTier);
+    if (entryTierIndex === -1) return false;
+    if (entryTierIndex < userTierIndex) return false; // needs more VRAM than user has
 
-  // Walk tiers that are equal-or-lower (same index or higher index in TIER_ORDER).
-  // Skip '<3' since those entries have model: null (cloud-only).
-  for (let i = userTierIndex; i < TIER_ORDER.length; i++) {
-    const tier = TIER_ORDER[i];
-    if (tier === '<3') continue;
+    // Exclude the recommended model — it's shown as the default
+    if (entry.model === recommendedModel) return false;
 
-    const entry = (RECOMMENDATIONS[tier] || {})[capability];
-    if (!entry || !entry.model) continue;
-
-    // Skip the recommended model — it will be the default option in the dropdown
-    if (entry.model === recommendedModel) continue;
-
-    // Avoid duplicates (e.g. qwen2.5-coder:14b appears in both 18+ and 10-18)
-    if (alternatives.some((a) => a.model === entry.model)) continue;
-
-    alternatives.push({ model: entry.model, sizeGB: entry.sizeGB, tier });
-  }
-
-  return alternatives;
+    return true;
+  }).map((entry) => ({
+    model:  entry.model,
+    label:  entry.label,
+    sizeGB: entry.sizeGB,
+    tier:   entry.minTier,
+    ...(entry.notes ? { notes: entry.notes } : {}),
+  }));
 }
 
-module.exports = { recommend, getAlternatives, RECOMMENDATIONS, TIER_ORDER };
+module.exports = { recommend, getAlternatives, RECOMMENDATIONS, TIER_ORDER, ALTERNATIVES_CATALOG };
