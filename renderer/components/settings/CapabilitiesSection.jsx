@@ -8,9 +8,9 @@
  * IPC events as the wizard — no new channels needed.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { setSelectedCapabilities, markServiceInstalled, hydrateSettings } from '../../store/slices/settings';
+import { setSelectedCapabilities, markServiceInstalled, hydrateSettings, setModel } from '../../store/slices/settings';
 
 const CAPABILITIES = [
   {
@@ -52,12 +52,49 @@ export default function CapabilitiesSection() {
   const dispatch = useDispatch();
   const selectedCapabilities = useSelector((s) => s.settings.selectedCapabilities);
   const installedServices    = useSelector((s) => s.settings.installedServices);
+  const configuredModels     = useSelector((s) => s.settings.models);
 
   const [installing, setInstalling]   = useState(null);   // capability id being installed
   const [progress,   setProgress]     = useState(0);
   const [stepMsg,    setStepMsg]      = useState('');
   const [error,      setError]        = useState('');
   const [done,       setDone]         = useState(null);   // capability id just completed
+
+  // Model picker state for installed text capabilities
+  const [recs,          setRecs]          = useState({});          // cap → { model, alternatives }
+  const [selectedModels, setSelectedModels] = useState({           // cap → currently chosen model tag
+    chat:   configuredModels.chat,
+    coding: configuredModels.coding,
+  });
+  const [modelSaving, setModelSaving] = useState(null);            // cap id currently being saved
+  const [modelError,  setModelError]  = useState('');
+
+  // Fetch VRAM-aware recommendations (includes alternatives) for installed text caps.
+  useEffect(() => {
+    const textCaps = selectedCapabilities.filter((c) => c === 'chat' || c === 'coding');
+    if (!textCaps.length || !window.electronAPI) return;
+    window.electronAPI.getModelRecommendations(textCaps).then((result) => {
+      if (result && !result.error) setRecs(result);
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleModelChange(cap, model) {
+    setModelSaving(cap);
+    setModelError('');
+    try {
+      const result = await window.electronAPI?.setDefaultModel(cap, model);
+      if (result?.success) {
+        setSelectedModels((prev) => ({ ...prev, [cap]: model }));
+        dispatch(setModel({ capability: cap, model }));
+      } else {
+        setModelError(result?.error ?? 'Failed to save model');
+      }
+    } catch (err) {
+      setModelError(err?.message ?? 'Failed to save model');
+    } finally {
+      setModelSaving(null);
+    }
+  }
 
   function isInstalled(cap) {
     if (cap.comingSoon) return false;
@@ -168,6 +205,36 @@ export default function CapabilitiesSection() {
                   )}
                 </div>
                 <p className="text-xs text-zinc-500 mt-0.5">{cap.description}</p>
+
+                {/* Model picker — shown for installed chat/coding capabilities */}
+                {(installed || justDone) && (cap.id === 'chat' || cap.id === 'coding') && recs[cap.id] && (
+                  <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-zinc-500">Model:</span>
+                    <select
+                      value={selectedModels[cap.id] ?? recs[cap.id].model ?? ''}
+                      onChange={(e) => handleModelChange(cap.id, e.target.value)}
+                      disabled={modelSaving === cap.id}
+                      className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-violet-500 disabled:opacity-50 max-w-[240px]"
+                    >
+                      {recs[cap.id].model && (
+                        <option value={recs[cap.id].model}>
+                          {recs[cap.id].model} (recommended)
+                        </option>
+                      )}
+                      {(recs[cap.id].alternatives ?? []).map((alt) => (
+                        <option key={alt.model} value={alt.model}>
+                          {alt.label || alt.model}
+                        </option>
+                      ))}
+                    </select>
+                    {modelSaving === cap.id && (
+                      <span className="text-xs text-zinc-500">Saving…</span>
+                    )}
+                    {modelError && modelSaving !== cap.id && (
+                      <span className="text-xs text-red-400">{modelError}</span>
+                    )}
+                  </div>
+                )}
 
                 {/* Progress bar — shown while installing this capability */}
                 {isActive && (

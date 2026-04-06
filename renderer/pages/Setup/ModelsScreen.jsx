@@ -175,7 +175,7 @@ export default function ModelsScreen({
                         <option value={rec.model}>{rec.model} (recommended)</option>
                         {rec.alternatives.map((alt) => (
                           <option key={alt.model} value={alt.model}>
-                            {alt.model}
+                            {alt.label || alt.model}{alt.notes ? ` — ${alt.notes}` : ''}
                           </option>
                         ))}
                       </select>
