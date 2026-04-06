@@ -14,8 +14,8 @@
  *   3–6GB      qwen2.5:3b        qwen2.5-coder:3b        SDXL 4-bit
  *   <3GB       Cloud recommended Cloud recommended        Cloud recommended
  *
- * Alternatives catalog adds Gemma 3, Llama 3.2, Phi 4, Mistral Nemo,
- * and DeepSeek Coder V2 so users can pick across model families.
+ * Alternatives catalog adds Gemma 4, Llama 3.x, Phi 4, Mistral Nemo,
+ * DeepSeek, and Code Llama so users can pick across model families.
  */
 
 'use strict';
@@ -76,27 +76,20 @@ const ALTERNATIVES_CATALOG = {
   chat: [
     // ── 18GB+ tier ────────────────────────────────────────────────────────────
     {
-      model: 'gemma3:27b',
-      label: 'Gemma 3 27B',
-      sizeGB: 17.0,
+      model: 'gemma4:31b',
+      label: 'Gemma 4 31B',
+      sizeGB: 19.0,
       minTier: '18+',
-      notes: '128K context · vision',
+      notes: '256K context · vision · reasoning',
     },
 
     // ── 10–18GB tier ──────────────────────────────────────────────────────────
     {
-      model: 'gemma3:12b',
-      label: 'Gemma 3 12B',
-      sizeGB: 8.1,
+      model: 'gemma4:26b',
+      label: 'Gemma 4 26B (MoE)',
+      sizeGB: 16.0,
       minTier: '10-18',
-      notes: '128K context · vision',
-    },
-    {
-      model: 'gemma3:12b-it-qat',
-      label: 'Gemma 3 12B QAT',
-      sizeGB: 5.4,
-      minTier: '10-18',
-      notes: '128K context · smaller footprint, similar quality',
+      notes: '128K context · vision · 4B active params',
     },
     {
       model: 'phi4',
@@ -115,6 +108,13 @@ const ALTERNATIVES_CATALOG = {
 
     // ── 6–10GB tier ───────────────────────────────────────────────────────────
     {
+      model: 'gemma4:e4b',
+      label: 'Gemma 4 E4B',
+      sizeGB: 3.0,
+      minTier: '6-10',
+      notes: '128K context · vision · edge-optimised',
+    },
+    {
       model: 'mistral:7b',
       label: 'Mistral 7B',
       sizeGB: 4.1,
@@ -128,21 +128,14 @@ const ALTERNATIVES_CATALOG = {
       minTier: '6-10',
       notes: '128K context',
     },
-    {
-      model: 'gemma3:4b',
-      label: 'Gemma 3 4B',
-      sizeGB: 3.3,
-      minTier: '6-10',
-      notes: '128K context · vision',
-    },
 
     // ── 3–6GB tier ────────────────────────────────────────────────────────────
     {
-      model: 'gemma3:4b-it-qat',
-      label: 'Gemma 3 4B QAT',
-      sizeGB: 2.0,
+      model: 'gemma4:e2b',
+      label: 'Gemma 4 E2B',
+      sizeGB: 1.5,
       minTier: '3-6',
-      notes: '128K context · smaller footprint',
+      notes: '128K context · vision · ultra-compact',
     },
     {
       model: 'phi4-mini',
@@ -170,6 +163,13 @@ const ALTERNATIVES_CATALOG = {
       notes: 'Best-in-class coding',
     },
     {
+      model: 'gemma4:31b',
+      label: 'Gemma 4 31B',
+      sizeGB: 19.0,
+      minTier: '18+',
+      notes: '256K context · strong at reasoning + code',
+    },
+    {
       model: 'deepseek-r1:14b',
       label: 'DeepSeek R1 14B',
       sizeGB: 9.0,
@@ -179,18 +179,18 @@ const ALTERNATIVES_CATALOG = {
 
     // ── 10–18GB tier ──────────────────────────────────────────────────────────
     {
+      model: 'gemma4:26b',
+      label: 'Gemma 4 26B (MoE)',
+      sizeGB: 16.0,
+      minTier: '10-18',
+      notes: '128K context · vision · agentic workflows',
+    },
+    {
       model: 'deepseek-coder-v2:16b',
       label: 'DeepSeek Coder V2 16B',
       sizeGB: 9.1,
       minTier: '10-18',
       notes: 'Specialized coding model',
-    },
-    {
-      model: 'gemma3:12b',
-      label: 'Gemma 3 12B',
-      sizeGB: 8.1,
-      minTier: '10-18',
-      notes: '128K context · good general coding',
     },
     {
       model: 'phi4',
@@ -202,21 +202,28 @@ const ALTERNATIVES_CATALOG = {
 
     // ── 6–10GB tier ───────────────────────────────────────────────────────────
     {
+      model: 'gemma4:e4b',
+      label: 'Gemma 4 E4B',
+      sizeGB: 3.0,
+      minTier: '6-10',
+      notes: '128K context · vision · edge-optimised',
+    },
+    {
       model: 'codellama:13b',
       label: 'Code Llama 13B',
       sizeGB: 7.4,
       minTier: '6-10',
       notes: 'Meta\'s dedicated coding model',
     },
-    {
-      model: 'gemma3:4b',
-      label: 'Gemma 3 4B',
-      sizeGB: 3.3,
-      minTier: '6-10',
-      notes: '128K context',
-    },
 
     // ── 3–6GB tier ────────────────────────────────────────────────────────────
+    {
+      model: 'gemma4:e2b',
+      label: 'Gemma 4 E2B',
+      sizeGB: 1.5,
+      minTier: '3-6',
+      notes: '128K context · vision · ultra-compact',
+    },
     {
       model: 'phi4-mini',
       label: 'Phi 4 Mini 3.8B',
