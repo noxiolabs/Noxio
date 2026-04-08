@@ -16,6 +16,7 @@
  *   start-installation        → Phase 3: installer.js + model-downloader.js
  *   send-chat-message         → Phase 2: ollama.js            ✓
  *   stop-stream               → Phase 2: ollama.js            ✓
+ *   extract-pdf-text          → Phase 5: pdf-parse            ✓
  *   generate-image            → Phase 5: comfyui.js
  *   start-recording           → Phase 6: whisper.js           ✓
  *   stop-recording            → Phase 6: whisper.js           ✓
@@ -567,6 +568,24 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
       ollama.stopGeneration();
     } catch (err) {
       logger.error(`IPC: stop-stream error — ${err.message}`);
+    }
+  });
+
+  /**
+   * Extracts plain text from a PDF file buffer.
+   * @param {number[]} payload.buffer - PDF file as a plain number array (from renderer ArrayBuffer)
+   * @returns {Promise<{ text: string }|{ error: string }>}
+   */
+  ipcMain.handle('extract-pdf-text', async (_event, { buffer } = {}) => {
+    try {
+      logger.info('IPC: extract-pdf-text');
+      const pdfParse = require('pdf-parse');
+      const buf = Buffer.from(buffer);
+      const data = await pdfParse(buf);
+      return { text: data.text };
+    } catch (err) {
+      logger.error(`IPC: extract-pdf-text failed — ${err.message}`);
+      return { error: err.message };
     }
   });
 

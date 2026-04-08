@@ -238,6 +238,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopStream: () => ipcRenderer.invoke('stop-stream'),
 
   /**
+   * Extracts plain text from a PDF buffer.
+   * @param {number[]} buffer - PDF file as a plain number array
+   * @returns {Promise<{ text: string }|{ error: string }>}
+   */
+  extractPdfText: (buffer) => ipcRenderer.invoke('extract-pdf-text', { buffer }),
+
+  /**
    * Starts image generation. Progress arrives via 'install-progress' events,
    * result via a completion event.
    * @param {string} prompt
