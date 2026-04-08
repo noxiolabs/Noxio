@@ -31,9 +31,13 @@ const VALID_RECEIVE_CHANNELS = [
   'model-pull-progress',      // { model: string, percent: number, status: string }
   'model-pull-complete',      // { model: string }
   'model-pull-error',         // { model: string, error: string }
+  'stream-thinking',          // token: string — reasoning tokens from think-capable models
   'routing-decision',         // { provider: string, model: string, conversationId: string, fallbackReason?: string }
   'open-settings',            // { section: string } — opens settings overlay from main process or external trigger
   'game-mode-changed',        // boolean — true when game mode activates, false when it deactivates
+  'service-update-progress',  // { service: string, percent: number, message: string }
+  'service-update-complete',  // { service: string }
+  'service-update-error',     // { service: string, error: string }
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -285,6 +289,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<Object|null>}
    */
   getInstallManifest: () => ipcRenderer.invoke('get-install-manifest'),
+
+  /**
+   * Checks installed vs latest version for all managed services (Ollama).
+   * @returns {Promise<{ ollama: { currentVersion: string|null, latestVersion: string|null, updateAvailable: boolean } }>}
+   */
+  checkServiceUpdates: () => ipcRenderer.invoke('check-service-updates'),
+
+  /**
+   * Downloads and installs the latest version of a service.
+   * Progress arrives via 'service-update-progress', completion via 'service-update-complete',
+   * errors via 'service-update-error'.
+   * @param {string} service - e.g. 'ollama'
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  updateService: (service) => ipcRenderer.invoke('update-service', { service }),
 
   /**
    * Runs a full verification pass over the manifest, checking that installed

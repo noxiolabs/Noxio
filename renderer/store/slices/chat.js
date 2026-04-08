@@ -77,7 +77,7 @@ const chatSlice = createSlice({
 
       // Add empty assistant placeholder to stream into
       const assistantMsgId = nanoid();
-      conv.messages.push({ id: assistantMsgId, role: 'assistant', content: '', createdAt: Date.now() });
+      conv.messages.push({ id: assistantMsgId, role: 'assistant', content: '', thinking: '', createdAt: Date.now() });
 
       state.streaming = true;
       state.streamingMessageId = assistantMsgId;
@@ -93,6 +93,18 @@ const chatSlice = createSlice({
       if (!conv || !state.streamingMessageId) return;
       const msg = conv.messages.find((m) => m.id === state.streamingMessageId);
       if (msg) msg.content += token;
+    },
+
+    /**
+     * Appends a reasoning/thinking token to the currently streaming message.
+     * Triggered by 'stream-thinking' IPC event (native Ollama think API).
+     */
+    appendThinkingToken(state, action) {
+      const token = action.payload;
+      const conv = state.conversations.find((c) => c.id === state.activeConversationId);
+      if (!conv || !state.streamingMessageId) return;
+      const msg = conv.messages.find((m) => m.id === state.streamingMessageId);
+      if (msg) msg.thinking = (msg.thinking ?? '') + token;
     },
 
     /**
@@ -149,6 +161,7 @@ export const {
   setActiveConversation,
   sendMessage,
   appendStreamToken,
+  appendThinkingToken,
   finaliseStream,
   deleteConversation,
   setSelectedModel,

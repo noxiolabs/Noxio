@@ -33,8 +33,9 @@ export default function ChatPanel() {
   const streaming     = useSelector((s) => s.chat.streaming);
   const systemPrompt = useSelector((s) => s.settings.chat.systemPrompt);
   const contextWindow = useSelector((s) => s.settings.chat.contextWindow);
-  const [input, setInput]         = useState('');
+  const [input, setInput]             = useState('');
   const [streamError, setStreamError] = useState('');
+  const [thinkingMode, setThinkingMode] = useState(false);
   const prevStreamingRef = useRef(false);
 
   const activeConversation = conversations.find((c) => c.id === activeId);
@@ -98,6 +99,7 @@ export default function ChatPanel() {
         messages,
         systemPrompt,
         contextWindow,
+        thinkingMode,
       });
     }
 
@@ -124,12 +126,29 @@ export default function ChatPanel() {
         {/* Top bar */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/60 flex-shrink-0">
           <ModelSelector conversationId={activeId} />
-          <div className="text-xs text-zinc-500">
-            {streaming ? (
-              <span className="text-violet-400 font-medium animate-pulse">Generating…</span>
-            ) : activeConversation ? (
-              `${activeConversation.messages.filter((m) => m.role === 'user').length} messages`
-            ) : null}
+
+          <div className="flex items-center gap-3">
+            {/* Thinking mode toggle */}
+            <button
+              onClick={() => setThinkingMode((m) => !m)}
+              title={thinkingMode ? 'Thinking mode on — click to disable' : 'Enable thinking mode (for DeepSeek R1, Qwen3, etc.)'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                thinkingMode
+                  ? 'bg-violet-600/20 text-violet-300 border border-violet-600/40'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 border border-transparent'
+              }`}
+            >
+              <BrainIcon />
+              <span>Think</span>
+            </button>
+
+            <div className="text-xs text-zinc-500">
+              {streaming ? (
+                <span className="text-violet-400 font-medium animate-pulse">Generating…</span>
+              ) : activeConversation ? (
+                `${activeConversation.messages.filter((m) => m.role === 'user').length} messages`
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -155,5 +174,14 @@ export default function ChatPanel() {
         )}
       </div>
     </div>
+  );
+}
+
+function BrainIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-1.66Z" />
+      <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-1.66Z" />
+    </svg>
   );
 }

@@ -17,7 +17,7 @@ import {
   setCurrentMode,
   setLastRouting,
 } from '../slices/infrastructure';
-import { appendStreamToken, finaliseStream, hydrateConversations } from '../slices/chat';
+import { appendStreamToken, appendThinkingToken, finaliseStream, hydrateConversations } from '../slices/chat';
 import { setManifest } from '../slices/manifest';
 import { setPullProgress, clearPullProgress, hydrateSettings, updateChatSettings, updateVoiceSettings, updateUI, setGameMode } from '../slices/settings';
 
@@ -42,6 +42,11 @@ export function setupIpcListeners(store) {
   /** stream-token → chat.appendStreamToken */
   api.on('stream-token', (token) => {
     store.dispatch(appendStreamToken(token));
+  });
+
+  /** stream-thinking → chat.appendThinkingToken (native Ollama think API) */
+  api.on('stream-thinking', (token) => {
+    store.dispatch(appendThinkingToken(token));
   });
 
   /** stream-complete → chat.finaliseStream */

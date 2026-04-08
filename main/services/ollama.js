@@ -174,6 +174,13 @@ async function pullModel(name, onProgress) {
 
         try {
           const obj = JSON.parse(trimmed);
+
+          if (obj.error) {
+            logger.error(`ollama: pullModel stream error for "${name}" — ${obj.error}`);
+            reject(new Error(obj.error));
+            return; // stop processing further lines in this chunk
+          }
+
           const percent =
             obj.total && obj.total > 0
               ? Math.round((obj.completed / obj.total) * 100)
@@ -269,6 +276,7 @@ async function generateStream(model, messages, win, options = {}) {
     messages: messagesWithSystem,
     stream: true,
     options: { num_ctx: safeContextWindow },
+    ...(options.think ? { think: true } : {}),
   });
 
   return new Promise((resolve, reject) => {
@@ -317,7 +325,13 @@ async function generateStream(model, messages, win, options = {}) {
           try {
             const obj = JSON.parse(trimmed);
 
-            if (obj.message && obj.message.content) {
+            if (obj.message?.thinking) {
+              if (win && !win.isDestroyed()) {
+                win.webContents.send('stream-thinking', obj.message.thinking);
+              }
+            }
+
+            if (obj.message?.content) {
               if (win && !win.isDestroyed()) {
                 win.webContents.send('stream-token', obj.message.content);
               }
