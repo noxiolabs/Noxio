@@ -1,17 +1,17 @@
 /**
  * @file ModelSelector.jsx
- * @description Dropdown that lists locally available Ollama models and lets the
- * user switch the active model for the current conversation. Fetches the model
- * list via IPC on mount and refreshes it when the user opens the dropdown.
+ * @description Dropdown that lists locally available Ollama models grouped by
+ * company. Uses model-registry to determine groupings. Unknown models go to "Other".
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setSelectedModel } from '../../store/slices/chat';
+import { groupModelsByCompany } from '../../utils/model-registry';
 
-/**
- * @param {{ conversationId: string|null }} props
- */
+// Company display order — known companies first, Other last
+const COMPANY_ORDER = ['Google', 'Alibaba', 'OpenAI', 'DeepSeek', 'Meta', 'Microsoft', 'Other'];
+
 export default function ModelSelector({ conversationId }) {
   const dispatch = useDispatch();
   const selectedModel = useSelector((s) => s.chat.selectedModel);
@@ -19,8 +19,6 @@ export default function ModelSelector({ conversationId }) {
   const [models, setModels] = useState([]);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  // Tracks whether the initial IPC fetch has already run so the effect
-  // never fires a second time if selectedModel changes after auto-select.
   const loadedRef = useRef(false);
 
   async function load() {
@@ -28,29 +26,24 @@ export default function ModelSelector({ conversationId }) {
     const list = await window.electronAPI.listModels();
     if (list?.length) {
       setModels(list);
-      // Auto-select first model if nothing is selected yet
       if (!selectedModel) {
         dispatch(setSelectedModel(list[0].name));
       }
     }
   }
 
-  // Fetch available models once on mount
   useEffect(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;
     load();
-  }, [dispatch, selectedModel]);
+  }, []);
 
-  // If the initial fetch returned nothing (Ollama was still starting up),
-  // retry automatically once Ollama transitions to 'running'.
   useEffect(() => {
     if (ollamaStatus === 'running' && models.length === 0) {
       load();
     }
   }, [ollamaStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClick(e) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
@@ -65,6 +58,13 @@ export default function ModelSelector({ conversationId }) {
   }
 
   const label = selectedModel ?? 'Select model';
+  const grouped = groupModelsByCompany(models);
+
+  // Build ordered list of company keys present in current model list
+  const orderedCompanies = [
+    ...COMPANY_ORDER.filter((c) => grouped[c]),
+    ...Object.keys(grouped).filter((c) => !COMPANY_ORDER.includes(c)),
+  ];
 
   return (
     <div ref={ref} className="relative">
@@ -72,8 +72,6 @@ export default function ModelSelector({ conversationId }) {
         onClick={() => {
           const next = !open;
           setOpen(next);
-          // Refresh model list every time the dropdown is opened so we always
-          // show up-to-date models and recover from any failed initial fetch.
           if (next) load();
         }}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/50 text-zinc-300 text-xs transition-colors"
@@ -85,7 +83,7 @@ export default function ModelSelector({ conversationId }) {
       </button>
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 min-w-[200px] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
+        <div className="absolute top-full mt-1 left-0 z-50 min-w-[220px] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
           {models.length === 0 ? (
             <div className="px-3 py-2 text-xs text-zinc-500">
               <p>No models found.</p>
@@ -100,21 +98,29 @@ export default function ModelSelector({ conversationId }) {
               </button>
             </div>
           ) : (
-            models.map((m) => (
-              <button
-                key={m.name}
-                onClick={() => select(m.name)}
-                className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between gap-3 ${
-                  m.name === selectedModel
-                    ? 'text-violet-400 bg-violet-600/10'
-                    : 'text-zinc-300 hover:bg-zinc-800'
-                }`}
-              >
-                <span className="truncate">{m.name}</span>
-                {m.name === selectedModel && (
-                  <span className="text-violet-500 flex-shrink-0">✓</span>
-                )}
-              </button>
+            orderedCompanies.map((company) => (
+              <div key={company}>
+                {/* Company header */}
+                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600 select-none">
+                  {company}
+                </div>
+                {grouped[company].map((m) => (
+                  <button
+                    key={m.name}
+                    onClick={() => select(m.name)}
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between gap-3 ${
+                      m.name === selectedModel
+                        ? 'text-violet-400 bg-violet-600/10'
+                        : 'text-zinc-300 hover:bg-zinc-800'
+                    }`}
+                  >
+                    <span className="truncate">{m.name}</span>
+                    {m.name === selectedModel && (
+                      <span className="text-violet-500 flex-shrink-0">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
             ))
           )}
         </div>
