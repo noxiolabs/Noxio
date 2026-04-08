@@ -20,6 +20,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { nanoid } from '@reduxjs/toolkit';
 import { createConversation, sendMessage, finaliseStream } from '../../store/slices/chat';
+import { supportsThinkingToggle } from '../../utils/model-registry';
 import ConversationSidebar from './ConversationSidebar';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -63,6 +64,14 @@ export default function ChatPanel() {
     }
     prevStreamingRef.current = streaming;
   }, [streaming, conversations, activeId]);
+
+  // Auto-reset thinking mode when switching to a model that doesn't support toggle thinking.
+  // Prevents stale thinkingMode: true from persisting on non-Qwen models.
+  useEffect(() => {
+    if (!supportsThinkingToggle(selectedModel)) {
+      setThinkingMode(false);
+    }
+  }, [selectedModel]);
 
   function handleSend() {
     setStreamError('');
@@ -128,19 +137,21 @@ export default function ChatPanel() {
           <ModelSelector conversationId={activeId} />
 
           <div className="flex items-center gap-3">
-            {/* Thinking mode toggle */}
-            <button
-              onClick={() => setThinkingMode((m) => !m)}
-              title={thinkingMode ? 'Thinking mode on — click to disable' : 'Enable thinking mode (for DeepSeek R1, Qwen3, etc.)'}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors ${
-                thinkingMode
-                  ? 'bg-violet-600/20 text-violet-300 border border-violet-600/40'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 border border-transparent'
-              }`}
-            >
-              <BrainIcon />
-              <span>Think</span>
-            </button>
+            {/* Thinking mode toggle — only for models with toggleable thinking (Qwen 3/3.5) */}
+            {supportsThinkingToggle(selectedModel) && (
+              <button
+                onClick={() => setThinkingMode((m) => !m)}
+                title={thinkingMode ? 'Thinking mode on — click to disable' : 'Enable thinking mode'}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                  thinkingMode
+                    ? 'bg-violet-600/20 text-violet-300 border border-violet-600/40'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 border border-transparent'
+                }`}
+              >
+                <BrainIcon />
+                <span>Think</span>
+              </button>
+            )}
 
             <div className="text-xs text-zinc-500">
               {streaming ? (
