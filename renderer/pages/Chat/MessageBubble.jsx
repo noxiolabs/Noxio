@@ -164,10 +164,28 @@ export default function MessageBubble({ message, isStreaming }) {
   const isUser = message.role === 'user';
 
   if (isUser) {
+    const attachments = message.attachments ?? [];
     return (
       <div className="flex justify-end mb-4">
-        <div className="max-w-[75%] px-4 py-2.5 rounded-2xl rounded-br-md bg-violet-600/20 border border-violet-600/30 text-zinc-100 text-sm leading-relaxed whitespace-pre-wrap">
-          {message.content}
+        <div className="max-w-[75%] flex flex-col items-end gap-1.5">
+          {/* Attachment badges */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-1">
+              {attachments.map((att, i) => (
+                <span
+                  key={`${att.name}-${i}`}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 text-[11px]"
+                >
+                  <span>{att.type === 'image' ? '🖼' : '📄'}</span>
+                  <span className="max-w-[120px] truncate">{att.name}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {/* Message bubble */}
+          <div className="px-4 py-2.5 rounded-2xl rounded-br-md bg-violet-600/20 border border-violet-600/30 text-zinc-100 text-sm leading-relaxed whitespace-pre-wrap">
+            {message.content}
+          </div>
         </div>
       </div>
     );
