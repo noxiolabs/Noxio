@@ -101,10 +101,18 @@ export default function ChatPanel() {
         imageAttachments.push(base64);
       } else if (att.type === 'pdf') {
         // Send ArrayBuffer to main for text extraction
-        const buffer = Array.from(new Uint8Array(att.content));
-        const result = await window.electronAPI.extractPdfText(buffer);
-        if (result?.text) {
-          fullContent = `[Attached: ${att.name}]\n${result.text}\n---\n${fullContent}`;
+        try {
+          const buffer = Array.from(new Uint8Array(att.content));
+          const result = await window.electronAPI.extractPdfText(buffer);
+          if (result?.text) {
+            fullContent = `[Attached: ${att.name}]\n${result.text}\n---\n${fullContent}`;
+          } else if (result?.error) {
+            setStreamError(`Could not read PDF "${att.name}": ${result.error}`);
+            return;
+          }
+        } catch (err) {
+          setStreamError(`Could not read PDF "${att.name}": ${err.message}`);
+          return;
         }
       } else {
         // text / md — inject directly
