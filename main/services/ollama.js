@@ -271,6 +271,16 @@ async function generateStream(model, messages, win, options = {}) {
     ];
   }
 
+  // Attach images to the last user message if provided
+  if (options.images && options.images.length > 0) {
+    const lastUserIdx = messagesWithSystem.map((m) => m.role).lastIndexOf('user');
+    if (lastUserIdx !== -1) {
+      messagesWithSystem = messagesWithSystem.map((msg, idx) =>
+        idx === lastUserIdx ? { ...msg, images: options.images } : msg
+      );
+    }
+  }
+
   const body = JSON.stringify({
     model,
     messages: messagesWithSystem,

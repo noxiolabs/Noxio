@@ -537,9 +537,9 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
    *   contextWindow?: number,
    * }} payload
    */
-  ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId, systemPrompt, contextWindow, thinkingMode } = {}) => {
+  ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId, systemPrompt, contextWindow, thinkingMode, images } = {}) => {
     try {
-      logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}, thinking: ${!!thinkingMode}`);
+      logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}, thinking: ${!!thinkingMode}, images: ${images?.length ?? 0}`);
 
       if (!mainWindow.isDestroyed()) {
         mainWindow.webContents.send('routing-decision', {
@@ -549,7 +549,7 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
         });
       }
 
-      await ollama.generateStream(model, messages, mainWindow, { systemPrompt, contextWindow, think: thinkingMode });
+      await ollama.generateStream(model, messages, mainWindow, { systemPrompt, contextWindow, think: thinkingMode, images });
     } catch (err) {
       logger.error(`IPC: send-chat-message error — ${err.message}\n${err.stack}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
