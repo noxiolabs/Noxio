@@ -37,6 +37,9 @@ export default function ChatPanel() {
   const [input, setInput]             = useState('');
   const [streamError, setStreamError] = useState('');
   const [thinkingMode, setThinkingMode] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const droppedFilesRef = useRef(null);
+  const [dropTick, setDropTick] = useState(0);
   const prevStreamingRef = useRef(false);
 
   const activeConversation = conversations.find((c) => c.id === activeId);
@@ -73,46 +76,64 @@ export default function ChatPanel() {
     }
   }, [selectedModel]);
 
-  function handleSend() {
+  async function handleSend(attachments = []) {
     setStreamError('');
     const content = input.trim();
-    if (!content || !selectedModel || streaming) return;
+    if ((!content && attachments.length === 0) || !selectedModel || streaming) return;
 
-    // Resolve the conversation ID before any dispatch so it's stable for both
-    // Redux and the IPC call. Pre-generating the ID here means we never rely on
-    // reading stale selector values after a dispatch.
     let convId = activeId;
     if (!convId) {
       convId = nanoid();
       dispatch(createConversation({ id: convId, model: selectedModel }));
     }
 
-    // Build messages array for Ollama BEFORE dispatching sendMessage, so the
-    // snapshot only contains the confirmed history (no pending placeholder yet).
+    // Process attachments: extract text/pdf inline, collect image base64
+    let fullContent = content;
+    const imageAttachments = [];
+    const displayAttachments = [];
+
+    for (const att of attachments) {
+      displayAttachments.push({ name: att.name, type: att.type });
+
+      if (att.type === 'image') {
+        // Strip data URL prefix to get raw base64
+        const base64 = att.content.includes(',') ? att.content.split(',')[1] : att.content;
+        imageAttachments.push(base64);
+      } else if (att.type === 'pdf') {
+        // Send ArrayBuffer to main for text extraction
+        const buffer = Array.from(new Uint8Array(att.content));
+        const result = await window.electronAPI.extractPdfText(buffer);
+        if (result?.text) {
+          fullContent = `[Attached: ${att.name}]\n${result.text}\n---\n${fullContent}`;
+        }
+      } else {
+        // text / md — inject directly
+        fullContent = `[Attached: ${att.name}]\n${att.content}\n---\n${fullContent}`;
+      }
+    }
+
     const existingMessages = (activeConversation?.messages ?? []).map((m) => ({
       role: m.role,
       content: m.content,
     }));
-    const messages = [...existingMessages, { role: 'user', content }];
+    const messages = [...existingMessages, { role: 'user', content: fullContent }];
 
-    // Add user message to Redux + create assistant placeholder
-    dispatch(sendMessage({ content }));
+    dispatch(sendMessage({ content: fullContent, attachments: displayAttachments }));
     setInput('');
 
-    // Send to main process — tokens come back via 'stream-token' IPC events.
     if (window.electronAPI) {
       window.electronAPI.sendChatMessage({
-        message: content,
+        message: fullContent,
         model: selectedModel,
         conversationId: convId,
         messages,
         systemPrompt,
         contextWindow,
         thinkingMode,
+        images: imageAttachments,
       });
     }
 
-    // Guard against a hung stream (Ollama crash, network drop, etc.)
     clearTimeout(streamTimeoutRef.current);
     streamTimeoutRef.current = setTimeout(() => {
       dispatch(finaliseStream());
@@ -127,7 +148,29 @@ export default function ChatPanel() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div
+      className="flex h-full overflow-hidden relative"
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setIsDragging(false); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files?.length) {
+          droppedFilesRef.current = e.dataTransfer.files;
+          setDropTick((t) => t + 1);
+        }
+      }}
+    >
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-900/80 border-2 border-dashed border-violet-500/60 rounded-xl pointer-events-none">
+          <div className="text-center">
+            <div className="text-4xl mb-2">📎</div>
+            <p className="text-violet-300 font-medium text-sm">Drop files here</p>
+            <p className="text-zinc-500 text-xs mt-1">Images, PDF, TXT, MD</p>
+          </div>
+        </div>
+      )}
       <ConversationSidebar />
 
       {/* Chat area */}
@@ -179,6 +222,8 @@ export default function ChatPanel() {
           onChange={setInput}
           onSend={handleSend}
           onStop={handleStop}
+          droppedFiles={droppedFilesRef.current}
+          dropTick={dropTick}
         />
         {streamError && (
           <p className="text-center text-xs text-red-400/80 pb-2 px-4">{streamError}</p>
