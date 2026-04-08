@@ -215,4 +215,60 @@ async function installOllama(onProgress) {
   }
 }
 
-module.exports = { isOllamaInstalled, installOllama };
+/**
+ * Returns the currently installed Ollama version string (e.g. '0.6.2'), or null
+ * if Ollama is not installed or the version cannot be determined.
+ * @returns {Promise<string|null>}
+ */
+async function getOllamaVersion() {
+  for (const candidate of OLLAMA_CANDIDATES) {
+    try {
+      const stdout = await new Promise((resolve, reject) => {
+        execFile(
+          candidate,
+          ['--version'],
+          { windowsHide: true, timeout: 5_000 },
+          (err, out) => (err ? reject(err) : resolve(out.trim()))
+        );
+      });
+      const match = stdout.match(/(\d+\.\d+\.\d+)/);
+      return match ? match[1] : null;
+    } catch (_) {
+      // Try next candidate
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetches the latest published Ollama version from the GitHub Releases API.
+ * Returns null if the request fails or the response cannot be parsed.
+ * @returns {Promise<string|null>}
+ */
+async function getLatestOllamaVersion() {
+  return new Promise((resolve) => {
+    const req = https.get(
+      {
+        hostname: 'api.github.com',
+        path: '/repos/ollama/ollama/releases/latest',
+        headers: { 'User-Agent': 'Noxio-App' },
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            resolve((data.tag_name ?? '').replace(/^v/, '') || null);
+          } catch (_) {
+            resolve(null);
+          }
+        });
+      }
+    );
+    req.setTimeout(10_000, () => { req.destroy(); resolve(null); });
+    req.on('error', () => resolve(null));
+  });
+}
+
+module.exports = { isOllamaInstalled, installOllama, getOllamaVersion, getLatestOllamaVersion };

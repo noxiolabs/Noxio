@@ -38,7 +38,7 @@ const logger = require('../utils/logger');
 const { detectHardware } = require('../infrastructure/detector');
 const processManager = require('../infrastructure/process-manager');
 const ollama = require('../services/ollama');
-const { isOllamaInstalled } = require('../wizard/ollama-installer');
+const { isOllamaInstalled, installOllama, getOllamaVersion, getLatestOllamaVersion } = require('../wizard/ollama-installer');
 const orchestrator = require('../infrastructure/orchestrator');
 const whisper      = require('../services/whisper');
 const kokoro       = require('../services/kokoro');
@@ -536,9 +536,9 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
    *   contextWindow?: number,
    * }} payload
    */
-  ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId, systemPrompt, contextWindow } = {}) => {
+  ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId, systemPrompt, contextWindow, thinkingMode } = {}) => {
     try {
-      logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}`);
+      logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}, thinking: ${!!thinkingMode}`);
 
       if (!mainWindow.isDestroyed()) {
         mainWindow.webContents.send('routing-decision', {
@@ -548,7 +548,7 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
         });
       }
 
-      await ollama.generateStream(model, messages, mainWindow, { systemPrompt, contextWindow });
+      await ollama.generateStream(model, messages, mainWindow, { systemPrompt, contextWindow, think: thinkingMode });
     } catch (err) {
       logger.error(`IPC: send-chat-message error — ${err.message}\n${err.stack}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -956,6 +956,74 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
    */
   ipcMain.handle('get-game-mode', () => {
     return { gameModeActive: gameModeApi.getGameModeActive?.() ?? false };
+  });
+
+  // ─── System Updates ─────────────────────────────────────────────────────
+
+  /**
+   * Checks the installed and latest version of each managed service.
+   * Currently only covers Ollama. Returns a map of service → version info.
+   * @returns {Promise<{ ollama: { currentVersion: string|null, latestVersion: string|null, updateAvailable: boolean } }>}
+   */
+  ipcMain.handle('check-service-updates', async () => {
+    logger.info('IPC: check-service-updates');
+    try {
+      const [currentVersion, latestVersion] = await Promise.all([
+        getOllamaVersion(),
+        getLatestOllamaVersion(),
+      ]);
+
+      const updateAvailable =
+        !!currentVersion &&
+        !!latestVersion &&
+        currentVersion !== latestVersion;
+
+      logger.info(`IPC: check-service-updates — ollama current=${currentVersion}, latest=${latestVersion}`);
+      return { ollama: { currentVersion, latestVersion, updateAvailable } };
+    } catch (err) {
+      logger.error(`IPC: check-service-updates failed — ${err.message}`);
+      return { ollama: { currentVersion: null, latestVersion: null, updateAvailable: false } };
+    }
+  });
+
+  /**
+   * Downloads and installs the latest version of a service.
+   * Currently only 'ollama' is supported. Progress arrives via 'service-update-progress'
+   * events, completion via 'service-update-complete', errors via 'service-update-error'.
+   * @param {{ service: string }} payload
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  ipcMain.handle('update-service', async (_event, { service } = {}) => {
+    logger.info(`IPC: update-service — service: ${service}`);
+
+    if (service !== 'ollama') {
+      return { success: false, error: `Unknown service: ${service}` };
+    }
+
+    function sendProgress(percent, message) {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('service-update-progress', { service, percent, message });
+      }
+    }
+
+    try {
+      sendProgress(0, 'Starting update...');
+      await installOllama((percent) => {
+        sendProgress(percent, percent < 80 ? 'Downloading...' : percent < 90 ? 'Installing...' : 'Starting...');
+      });
+      sendProgress(100, 'Update complete');
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('service-update-complete', { service });
+      }
+      logger.info(`IPC: update-service — ${service} updated successfully`);
+      return { success: true };
+    } catch (err) {
+      logger.error(`IPC: update-service failed — ${err.message}`);
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('service-update-error', { service, error: err.message });
+      }
+      return { success: false, error: err.message };
+    }
   });
 
   logger.info('IPC handlers registered (Phase 5)');

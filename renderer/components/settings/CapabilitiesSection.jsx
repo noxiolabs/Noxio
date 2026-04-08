@@ -60,37 +60,42 @@ export default function CapabilitiesSection() {
   const [error,      setError]        = useState('');
   const [done,       setDone]         = useState(null);   // capability id just completed
 
-  // Model picker state for installed text capabilities
+  // Model picker state for installed capabilities
   const [recs,          setRecs]          = useState({});          // cap → { model, alternatives }
   const [selectedModels, setSelectedModels] = useState({           // cap → currently chosen model tag
     chat:   configuredModels.chat,
     coding: configuredModels.coding,
+    image:  configuredModels.image,
   });
   const [modelSaving, setModelSaving] = useState(null);            // cap id currently being saved
-  const [modelError,  setModelError]  = useState('');
+  const [modelError,  setModelError]  = useState({});              // cap id → error string
 
-  // Fetch VRAM-aware recommendations (includes alternatives) for installed text caps.
+  // Fetch VRAM-aware recommendations (includes alternatives) for installed caps.
   useEffect(() => {
-    const textCaps = selectedCapabilities.filter((c) => c === 'chat' || c === 'coding');
-    if (!textCaps.length || !window.electronAPI) return;
-    window.electronAPI.getModelRecommendations(textCaps).then((result) => {
+    const activeCaps = selectedCapabilities.filter((c) => c === 'chat' || c === 'coding' || c === 'image');
+    if (!activeCaps.length || !window.electronAPI) return;
+    window.electronAPI.getModelRecommendations(activeCaps).then((result) => {
       if (result && !result.error) setRecs(result);
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleModelChange(cap, model) {
     setModelSaving(cap);
-    setModelError('');
+    setModelError((prev) => ({ ...prev, [cap]: '' }));
     try {
       const result = await window.electronAPI?.setDefaultModel(cap, model);
       if (result?.success) {
         setSelectedModels((prev) => ({ ...prev, [cap]: model }));
         dispatch(setModel({ capability: cap, model }));
       } else {
-        setModelError(result?.error ?? 'Failed to save model');
+        const raw = result?.error ?? 'Failed to save model';
+        const msg = raw.startsWith('Model not found:')
+          ? `${model} isn't downloaded yet — pull it from the Models tab first`
+          : raw;
+        setModelError((prev) => ({ ...prev, [cap]: msg }));
       }
     } catch (err) {
-      setModelError(err?.message ?? 'Failed to save model');
+      setModelError((prev) => ({ ...prev, [cap]: err?.message ?? 'Failed to save model' }));
     } finally {
       setModelSaving(null);
     }
@@ -206,8 +211,8 @@ export default function CapabilitiesSection() {
                 </div>
                 <p className="text-xs text-zinc-500 mt-0.5">{cap.description}</p>
 
-                {/* Model picker — shown for installed chat/coding capabilities */}
-                {(installed || justDone) && (cap.id === 'chat' || cap.id === 'coding') && recs[cap.id] && (
+                {/* Model picker — shown for installed chat/coding/image capabilities */}
+                {(installed || justDone) && (cap.id === 'chat' || cap.id === 'coding' || cap.id === 'image') && recs[cap.id] && (
                   <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-zinc-500">Model:</span>
                     <select
@@ -230,8 +235,8 @@ export default function CapabilitiesSection() {
                     {modelSaving === cap.id && (
                       <span className="text-xs text-zinc-500">Saving…</span>
                     )}
-                    {modelError && modelSaving !== cap.id && (
-                      <span className="text-xs text-red-400">{modelError}</span>
+                    {modelError[cap.id] && (
+                      <span className="text-xs text-red-400">{modelError[cap.id]}</span>
                     )}
                   </div>
                 )}

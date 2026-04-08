@@ -70,7 +70,7 @@ const RECOMMENDATIONS = {
  *   minTier — Minimum VRAM tier needed ('18+' | '10-18' | '6-10' | '3-6')
  *   notes   — Optional short note surfaced in the UI (context window, strengths, etc.)
  *
- * @type {Record<'chat'|'coding', Array<{model:string, label:string, sizeGB:number, minTier:string, notes?:string}>>}
+ * @type {Record<'chat'|'coding'|'image', Array<{model:string, label:string, sizeGB:number, minTier:string, notes?:string}>>}
  */
 const ALTERNATIVES_CATALOG = {
   chat: [
@@ -239,6 +239,42 @@ const ALTERNATIVES_CATALOG = {
       notes: '128K context',
     },
   ],
+
+  image: [
+    // ── 18GB+ tier ────────────────────────────────────────────────────────────
+    // (FLUX.1-dev-fp8 is the recommended model for 18+ — excluded automatically)
+    // Offer schnell as a lighter/faster alternative for 18+ users
+    {
+      model: 'FLUX.1-schnell-fp8',
+      label: 'FLUX.1 Schnell FP8',
+      sizeGB: 9.0,
+      minTier: '18+',
+      notes: 'Faster · slightly lower quality',
+    },
+
+    // ── 10–18GB tier ──────────────────────────────────────────────────────────
+    // (FLUX.1-schnell-fp8 is the recommended model for 10-18)
+    {
+      model: 'SDXL-lightning',
+      label: 'SDXL Lightning',
+      sizeGB: 6.5,
+      minTier: '10-18',
+      notes: 'Faster · lower VRAM · 1024×1024',
+    },
+
+    // ── 6–10GB tier ───────────────────────────────────────────────────────────
+    // (SDXL-lightning is the recommended model for 6-10)
+    {
+      model: 'SDXL-4bit',
+      label: 'SDXL 4-bit',
+      sizeGB: 3.5,
+      minTier: '6-10',
+      notes: 'Quantised · lower VRAM · 1024×1024',
+    },
+
+    // ── 3–6GB tier ────────────────────────────────────────────────────────────
+    // (SDXL-4bit is the recommended model for 3-6 — no meaningful alternatives at this size)
+  ],
 };
 
 /**
@@ -273,7 +309,7 @@ function recommend(vramTier, capabilities) {
  * @returns {Array<{model: string, label: string, sizeGB: number, tier: string, notes?: string}>}
  */
 function getAlternatives(vramTier, capability) {
-  if (capability === 'voice' || capability === 'image') return [];
+  if (capability === 'voice') return [];
 
   const userTierIndex = TIER_ORDER.indexOf(vramTier);
   if (userTierIndex === -1) return [];

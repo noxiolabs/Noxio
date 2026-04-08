@@ -17,6 +17,7 @@ import VoiceSection         from './settings/VoiceSection';
 import ChatSection          from './settings/ChatSection';
 import AppearanceSection    from './settings/AppearanceSection';
 import CapabilitiesSection  from './settings/CapabilitiesSection';
+import SystemSection        from './settings/SystemSection';
 
 const SECTIONS = [
   { key: 'capabilities', label: 'Capabilities' },
@@ -24,6 +25,7 @@ const SECTIONS = [
   { key: 'voice',        label: 'Voice'        },
   { key: 'chat',         label: 'Chat'         },
   { key: 'appearance',   label: 'Appearance'   },
+  { key: 'system',       label: 'System'       },
 ];
 
 /**
@@ -39,6 +41,7 @@ function SectionContent({ section }) {
     case 'voice':        return <VoiceSection />;
     case 'chat':         return <ChatSection />;
     case 'appearance':   return <AppearanceSection />;
+    case 'system':       return <SystemSection />;
     default:             return <CapabilitiesSection />;
   }
 }

@@ -10,11 +10,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
+import { setPullProgress } from '../../store/slices/settings';
 
 /**
  * @returns {JSX.Element}
  */
 export default function ModelsSection() {
+  const dispatch       = useDispatch();
   const pullInProgress = useSelector((s) => s.settings._settingsPanel.pullInProgress);
   const pullPercent    = useSelector((s) => s.settings._settingsPanel.pullPercent);
   // Live service statuses from health checker — always accurate, no manifest needed
@@ -75,6 +77,16 @@ export default function ModelsSection() {
     prevOllamaRef.current = ollamaStatus;
   }, [ollamaStatus]);
 
+  // Show pull errors surfaced via IPC event (the pull-model invoke doesn't rethrow)
+  // Payload is { model, error } — note: key is 'error', not 'message'
+  useEffect(() => {
+    function onPullError({ error }) {
+      setPullError(`Pull failed: ${error ?? 'unknown error'}`);
+    }
+    window.electronAPI?.on('model-pull-error', onPullError);
+    return () => window.electronAPI?.off('model-pull-error', onPullError);
+  }, []);
+
   /** Sends a delete-model IPC request and refreshes the list on success. */
   async function handleDelete(modelId) {
     setDeleteError('');
@@ -100,10 +112,13 @@ export default function ModelsSection() {
     const modelName = pullInput.trim();
     if (!modelName || pullInProgress) return;
     setPullError('');
+    // Show the bar immediately — don't wait for the first IPC event
+    dispatch(setPullProgress({ model: modelName, percent: 0 }));
     try {
       await window.electronAPI?.pullModel(modelName);
       setPullInput('');
     } catch (err) {
+      // pull-model invoke doesn't rethrow; this is a fallback
       setPullError(`Pull failed: ${err?.message ?? 'unknown error'}`);
     }
   }
