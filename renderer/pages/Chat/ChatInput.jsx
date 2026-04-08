@@ -100,8 +100,12 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
     const toAdd = Array.from(files).slice(0, remaining);
     if (!toAdd.length) return;
 
-    const read = await Promise.all(toAdd.map(readFile));
-    setAttachments((prev) => [...prev, ...read]);
+    try {
+      const read = await Promise.all(toAdd.map(readFile));
+      setAttachments((prev) => [...prev, ...read]);
+    } catch (err) {
+      console.error('Failed to read attachment:', err);
+    }
   }
 
   function handleFileInput(e) {
@@ -134,7 +138,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
               const isImageOnNonVision = att.type === 'image' && !visionSupported;
               return (
                 <div
-                  key={i}
+                  key={`${att.name}-${i}`}
                   className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border ${
                     isImageOnNonVision
                       ? 'bg-amber-900/20 border-amber-700/40 text-amber-400'
