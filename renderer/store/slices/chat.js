@@ -68,16 +68,31 @@ const chatSlice = createSlice({
      * the streaming placeholder for the assistant's response.
      */
     sendMessage(state, action) {
-      const { content } = action.payload;
+      const { content, attachments } = action.payload;
       const conv = state.conversations.find((c) => c.id === state.activeConversationId);
       if (!conv) return;
 
       // Add user message
-      conv.messages.push({ id: nanoid(), role: 'user', content, createdAt: Date.now() });
+      const userMessage = {
+        id: nanoid(),
+        role: 'user',
+        content,
+        attachments: attachments ?? [],
+        createdAt: Date.now(),
+      };
+      conv.messages.push(userMessage);
 
       // Add empty assistant placeholder to stream into
       const assistantMsgId = nanoid();
-      conv.messages.push({ id: assistantMsgId, role: 'assistant', content: '', thinking: '', createdAt: Date.now() });
+      const assistantMessage = {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: '',
+        attachments: [],
+        thinking: '',
+        createdAt: Date.now(),
+      };
+      conv.messages.push(assistantMessage);
 
       state.streaming = true;
       state.streamingMessageId = assistantMsgId;

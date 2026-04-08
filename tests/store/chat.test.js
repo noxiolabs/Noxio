@@ -227,3 +227,26 @@ describe('setSelectedModel', () => {
     expect(state.selectedModel).toBeNull();
   });
 });
+
+// ─── sendMessage with attachments ─────────────────────────────────────────
+
+describe('sendMessage with attachments', () => {
+  it('stores attachment metadata on the user message', () => {
+    const state0 = stateWithConversation();
+    const state1 = reducer(state0, sendMessage({
+      content: 'Look at this',
+      attachments: [{ name: 'photo.png', type: 'image' }],
+    }));
+    const conv = state1.conversations[0];
+    const userMsg = conv.messages[0];
+    expect(userMsg.role).toBe('user');
+    expect(userMsg.attachments).toEqual([{ name: 'photo.png', type: 'image' }]);
+  });
+
+  it('stores empty array when no attachments provided', () => {
+    const state0 = stateWithConversation();
+    const state1 = reducer(state0, sendMessage({ content: 'Hello' }));
+    const userMsg = state1.conversations[0].messages[0];
+    expect(userMsg.attachments).toEqual([]);
+  });
+});
