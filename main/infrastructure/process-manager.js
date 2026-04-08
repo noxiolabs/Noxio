@@ -233,7 +233,14 @@ function spawnService(name) {
   _children[name] = child;
   serviceStates[name].startedAt = new Date().toISOString();
 
-  emitStatus(name, 'running', child.pid);
+  // For Ollama: defer the 'running' emit until the HTTP API is actually ready,
+  // so that ModelSelector's retry effect fires only after /api/tags is reachable.
+  // For all other services, emit immediately as before.
+  if (name === 'ollama') {
+    pollOllamaReady(name, child.pid, () => emitStatus(name, 'running', child.pid));
+  } else {
+    emitStatus(name, 'running', child.pid);
+  }
 
   // Reset restartCount after 30 seconds of stable running so a previously-crashed
   // service that recovers gets the full 5 restart chances again.
@@ -334,6 +341,53 @@ function checkOllamaAlreadyRunning() {
     );
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+/**
+ * Polls Ollama's HTTP API until it responds successfully, then calls onReady.
+ * Stops polling if the child process has already exited (name no longer in _children).
+ * Used to defer the 'running' status emit until Ollama is actually ready to serve.
+ *
+ * @param {string} name        - Service name (used to check if process is still alive)
+ * @param {number} pid         - Child PID (for logging)
+ * @param {Function} onReady   - Called when Ollama is confirmed ready
+ * @param {number} [attempt=0] - Internal retry counter
+ */
+function pollOllamaReady(name, pid, onReady, attempt = 0) {
+  const MAX_ATTEMPTS = 30; // 30 × 1 s = 30 s max wait
+  const INTERVAL_MS  = 1_000;
+
+  if (attempt >= MAX_ATTEMPTS) {
+    logger.warn(`process-manager: [${name}] API not ready after ${MAX_ATTEMPTS}s — emitting running anyway`);
+    onReady();
+    return;
+  }
+
+  // If the process died before it became ready, stop polling
+  if (_children[name] === null || _children[name] === undefined) {
+    logger.warn(`process-manager: [${name}] process exited before API became ready — aborting poll`);
+    return;
+  }
+
+  const req = http.get(
+    { hostname: '127.0.0.1', port: 11434, path: '/api/tags', timeout: 2000 },
+    (res) => {
+      res.resume();
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        logger.info(`process-manager: [${name}] API ready (pid ${pid}) after ${attempt + 1} probe(s)`);
+        onReady();
+      } else {
+        setTimeout(() => pollOllamaReady(name, pid, onReady, attempt + 1), INTERVAL_MS);
+      }
+    }
+  );
+  req.on('error', () => {
+    setTimeout(() => pollOllamaReady(name, pid, onReady, attempt + 1), INTERVAL_MS);
+  });
+  req.on('timeout', () => {
+    req.destroy();
+    setTimeout(() => pollOllamaReady(name, pid, onReady, attempt + 1), INTERVAL_MS);
   });
 }
 
