@@ -30,7 +30,7 @@ function parseText(text) {
  * } | { error: string }>}
  */
 async function search(query) {
-  if (!query || !query.trim()) {
+  if (typeof query !== 'string' || !query.trim()) {
     return { error: 'query required' };
   }
 
@@ -46,7 +46,6 @@ async function search(query) {
     url.searchParams.set('skip_disambig', '1');
 
     const response = await fetch(url.toString(), { signal: controller.signal });
-    clearTimeout(timer);
 
     if (!response.ok) {
       return { error: `HTTP ${response.status}` };
@@ -73,11 +72,12 @@ async function search(query) {
 
     return { abstract, results };
   } catch (err) {
-    clearTimeout(timer);
     if (err.name === 'AbortError') {
       return { error: 'timeout' };
     }
     return { error: err.message ?? 'search failed' };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
