@@ -245,6 +245,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   extractPdfText: (buffer) => ipcRenderer.invoke('extract-pdf-text', { buffer }),
 
   /**
+   * Searches DuckDuckGo for the given query and returns instant answer results.
+   * @param {string} query
+   * @returns {Promise<{ abstract: Object|null, results: Array }|{ error: string }>}
+   */
+  searchWeb: (query) => ipcRenderer.invoke('search-web', { query }),
+
+  /**
    * Starts image generation. Progress arrives via 'install-progress' events,
    * result via a completion event.
    * @param {string} prompt

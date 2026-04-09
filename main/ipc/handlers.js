@@ -43,6 +43,7 @@ const { isOllamaInstalled, installOllama, getOllamaVersion, getLatestOllamaVersi
 const orchestrator = require('../infrastructure/orchestrator');
 const whisper      = require('../services/whisper');
 const kokoro       = require('../services/kokoro');
+const webSearch    = require('../services/web-search');
 const { scanHardware } = require('../wizard/hardware-scan');
 const { recommend, getAlternatives } = require('../wizard/model-recommender');
 const { runInstallation } = require('../infrastructure/installer');
@@ -590,6 +591,23 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
       logger.error(`IPC: extract-pdf-text failed — ${err.message}`);
       return { error: err.message };
     }
+  });
+
+  // ─── Web Search ──────────────────────────────────────────────────────────
+
+  /**
+   * Searches DuckDuckGo Instant Answers API for the given query.
+   * Returns results with abstract and related topics.
+   * Non-fatal: returns { error } on network failure — caller handles gracefully.
+   * @param {{ query: string }} payload
+   * @returns {Promise<{ abstract: Object|null, results: Array }|{ error: string }>}
+   */
+  ipcMain.handle('search-web', async (_event, { query } = {}) => {
+    if (!query || typeof query !== 'string') {
+      return { error: 'query required' };
+    }
+    logger.info(`IPC: search-web "${query.slice(0, 80)}"`);
+    return webSearch.search(query);
   });
 
   // ─── Image Generation ────────────────────────────────────────────────────
