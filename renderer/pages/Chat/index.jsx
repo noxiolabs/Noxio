@@ -98,6 +98,10 @@ export default function ChatPanel() {
       if (att.type === 'image') {
         // Strip data URL prefix to get raw base64
         const base64 = att.content.includes(',') ? att.content.split(',')[1] : att.content;
+        if (!base64 || !/^[A-Za-z0-9+/=]+$/.test(base64)) {
+          setStreamError(`Invalid image data for "${att.name}". Please try again.`);
+          return;
+        }
         imageAttachments.push(base64);
       } else if (att.type === 'pdf') {
         // Send ArrayBuffer to main for text extraction

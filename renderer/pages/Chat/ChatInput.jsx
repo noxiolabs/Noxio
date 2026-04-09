@@ -11,6 +11,7 @@ import { useSelector } from 'react-redux';
 import { supportsVision } from '../../utils/model-registry';
 
 const MAX_ATTACHMENTS = 5;
+const MAX_FILE_SIZE_MB = 50;
 
 /**
  * Reads a File and returns { name, type, content } for use in handleSend.
@@ -97,7 +98,14 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
 
   async function handleFiles(files) {
     const remaining = MAX_ATTACHMENTS - attachments.length;
-    const toAdd = Array.from(files).slice(0, remaining);
+    const candidates = Array.from(files).filter((f) => {
+      if (f.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        console.error(`"${f.name}" exceeds the ${MAX_FILE_SIZE_MB}MB limit and was skipped.`);
+        return false;
+      }
+      return true;
+    });
+    const toAdd = candidates.slice(0, remaining);
     if (!toAdd.length) return;
 
     try {

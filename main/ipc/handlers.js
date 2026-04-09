@@ -579,6 +579,9 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
   ipcMain.handle('extract-pdf-text', async (_event, { buffer } = {}) => {
     try {
       logger.info('IPC: extract-pdf-text');
+      if (!Array.isArray(buffer)) {
+        return { error: 'Invalid buffer format' };
+      }
       const pdfParse = require('pdf-parse');
       const buf = Buffer.from(buffer);
       const data = await pdfParse(buf);
