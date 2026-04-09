@@ -20,7 +20,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { nanoid } from '@reduxjs/toolkit';
 import { createConversation, sendMessage, finaliseStream } from '../../store/slices/chat';
-import { supportsThinkingToggle } from '../../utils/model-registry';
+import { supportsThinkingToggle, getModelMeta } from '../../utils/model-registry';
 import ConversationSidebar from './ConversationSidebar';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -49,6 +49,23 @@ export default function ChatPanel() {
   const streamTimeoutRef = useRef(null);
   const STREAM_TIMEOUT_MS = 60_000;
 
+  // Reset the stream timeout on each incoming token so long thinking phases
+  // (e.g. gemma4, deepseek-r1) don't trigger the crash-detection timeout.
+  useEffect(() => {
+    function resetStreamTimeout() {
+      if (!streamTimeoutRef.current) return; // Not streaming — nothing to reset
+      clearTimeout(streamTimeoutRef.current);
+      streamTimeoutRef.current = setTimeout(() => {
+        dispatch(finaliseStream());
+        setStreamError('Ollama lost connection. Response may be incomplete.');
+      }, STREAM_TIMEOUT_MS);
+    }
+
+    window.electronAPI?.on('stream-token', resetStreamTimeout);
+    window.electronAPI?.on('stream-thinking', resetStreamTimeout);
+    // ChatPanel never unmounts during app lifetime, so listener cleanup is omitted.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (prevStreamingRef.current && !streaming) {
       // Stream just finished — clear any pending timeout
@@ -60,7 +77,7 @@ export default function ChatPanel() {
       const conv = conversations.find((c) => c.id === activeId);
       if (conv) {
         const last = conv.messages[conv.messages.length - 1];
-        if (last?.role === 'assistant' && !last.content.trim()) {
+        if (last?.role === 'assistant' && !last.content.trim() && !last.thinking?.trim()) {
           setStreamError('No response received. Ollama may still be loading the model — please try again in a moment.');
         }
       }
@@ -134,6 +151,11 @@ export default function ChatPanel() {
     setInput('');
 
     if (window.electronAPI) {
+      // Always-thinking models (gemma4, deepseek-r1) need think:true unconditionally.
+      // Toggle-thinking models (qwen3) use the user-controlled thinkingMode button.
+      const effectiveThinkingMode =
+        thinkingMode || getModelMeta(selectedModel)?.supportsThinking === 'always';
+
       window.electronAPI.sendChatMessage({
         message: fullContent,
         model: selectedModel,
@@ -141,7 +163,7 @@ export default function ChatPanel() {
         messages,
         systemPrompt,
         contextWindow,
-        thinkingMode,
+        thinkingMode: effectiveThinkingMode,
         images: imageAttachments,
       });
     }
