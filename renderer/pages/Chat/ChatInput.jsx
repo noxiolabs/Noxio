@@ -63,6 +63,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
   const fileInputRef  = useRef(null);
   const prevStreamingRef = useRef(false);
   const [attachments, setAttachments] = useState([]);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
   // Auto-focus when streaming ends
   useEffect(() => {
@@ -129,7 +130,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
   }
 
   function handleSendClick() {
-    onSend(attachments);
+    onSend(attachments, webSearchEnabled);
     setAttachments([]);
   }
 
@@ -192,6 +193,20 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
             onChange={handleFileInput}
           />
 
+          {/* Web search toggle */}
+          <button
+            onClick={() => setWebSearchEnabled((v) => !v)}
+            disabled={streaming}
+            title={webSearchEnabled ? 'Web search on — click to disable' : 'Enable web search (DuckDuckGo)'}
+            className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+              webSearchEnabled
+                ? 'bg-violet-600/20 text-violet-300 border border-violet-600/40'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+            }`}
+          >
+            <GlobeIcon />
+          </button>
+
           <textarea
             ref={textareaRef}
             value={value}
@@ -242,6 +257,16 @@ function PaperclipIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+    </svg>
+  );
+}
+
+function GlobeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
     </svg>
   );
 }
