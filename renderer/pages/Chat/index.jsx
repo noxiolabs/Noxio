@@ -93,7 +93,23 @@ export default function ChatPanel() {
     }
   }, [selectedModel]);
 
-  async function handleSend(attachments = []) {
+  function buildSearchContext(query, searchResult, originalContent) {
+    const lines = [`[Web search: "${query}"]`];
+
+    if (searchResult.abstract?.text) {
+      lines.push(`${searchResult.abstract.source || 'Source'}: ${searchResult.abstract.text}`);
+    }
+
+    (searchResult.results ?? []).forEach((r, i) => {
+      lines.push(`${i + 1}. ${r.title}${r.snippet ? ` \u2014 ${r.snippet}` : ''}`);
+      if (r.url) lines.push(`   Source: ${r.url}`);
+    });
+
+    lines.push('---', '', originalContent);
+    return lines.join('\n');
+  }
+
+  async function handleSend(attachments = [], webSearchEnabled = false) {
     setStreamError('');
     const content = input.trim();
     if ((!content && attachments.length === 0) || !selectedModel || streaming) return;
@@ -147,7 +163,21 @@ export default function ChatPanel() {
     }));
     const messages = [...existingMessages, { role: 'user', content: fullContent }];
 
-    dispatch(sendMessage({ content: fullContent, attachments: displayAttachments }));
+    // Web search: fetch results and prepend context if enabled
+    let webSearchUsed = false;
+    if (webSearchEnabled && content.trim() && window.electronAPI?.searchWeb) {
+      try {
+        const searchResult = await window.electronAPI.searchWeb(content);
+        if (!searchResult.error && (searchResult.abstract || searchResult.results?.length)) {
+          fullContent = buildSearchContext(content, searchResult, fullContent);
+          webSearchUsed = true;
+        }
+      } catch (_) {
+        // Non-fatal: send without search context
+      }
+    }
+
+    dispatch(sendMessage({ content: fullContent, attachments: displayAttachments, webSearchUsed }));
     setInput('');
 
     if (window.electronAPI) {

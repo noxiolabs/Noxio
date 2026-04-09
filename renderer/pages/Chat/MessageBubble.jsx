@@ -186,6 +186,16 @@ export default function MessageBubble({ message, isStreaming }) {
           <div className="px-4 py-2.5 rounded-2xl rounded-br-md bg-violet-600/20 border border-violet-600/30 text-zinc-100 text-sm leading-relaxed whitespace-pre-wrap">
             {message.content}
           </div>
+          {message.webSearchUsed && (
+            <div className="flex items-center gap-1 mt-1 text-[10px] text-zinc-500">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+              Web search used
+            </div>
+          )}
         </div>
       </div>
     );
