@@ -250,3 +250,30 @@ describe('sendMessage with attachments', () => {
     expect(userMsg.attachments).toEqual([]);
   });
 });
+
+// ─── sendMessage with webSearchUsed ──────────────────────────────────────
+
+describe('sendMessage with webSearchUsed', () => {
+  it('sets webSearchUsed on user message when flag is true', () => {
+    const state0 = stateWithConversation();
+    const state1 = reducer(state0, sendMessage({
+      content: 'what is nodejs',
+      attachments: [],
+      webSearchUsed: true,
+    }));
+    const conv = state1.conversations[0];
+    const userMsg = conv.messages.find((m) => m.role === 'user');
+    expect(userMsg.webSearchUsed).toBe(true);
+  });
+
+  it('defaults webSearchUsed to false when not provided', () => {
+    const state0 = stateWithConversation();
+    const state1 = reducer(state0, sendMessage({
+      content: 'hello',
+      attachments: [],
+    }));
+    const conv = state1.conversations[0];
+    const userMsg = conv.messages.find((m) => m.role === 'user');
+    expect(userMsg.webSearchUsed).toBe(false);
+  });
+});

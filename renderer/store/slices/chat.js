@@ -68,7 +68,7 @@ const chatSlice = createSlice({
      * the streaming placeholder for the assistant's response.
      */
     sendMessage(state, action) {
-      const { content, attachments } = action.payload;
+      const { content, attachments, webSearchUsed } = action.payload;
       const conv = state.conversations.find((c) => c.id === state.activeConversationId);
       if (!conv) return;
 
@@ -78,6 +78,7 @@ const chatSlice = createSlice({
         role: 'user',
         content,
         attachments: attachments ?? [],
+        webSearchUsed: webSearchUsed ?? false,
         createdAt: Date.now(),
       };
       conv.messages.push(userMessage);
