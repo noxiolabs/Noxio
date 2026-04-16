@@ -606,7 +606,8 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
       return { error: 'query required' };
     }
     logger.info(`IPC: search-web "${query.slice(0, 80)}"`);
-    return webSearch.search(query);
+    const installDir = store.get('settings.installDir') || null;
+    return webSearch.search(query, installDir);
   });
 
   /**
@@ -630,12 +631,9 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
   ipcMain.handle('start-searxng', async () => {
     try {
       logger.info('IPC: start-searxng');
-      await new Promise((resolve, reject) =>
-        execFile('docker', ['start', 'noxio-searxng'], { timeout: 15_000 }, (err) =>
-          err ? reject(new Error(err.message.split('\n')[0])) : resolve()
-        )
-      );
-      return { success: true };
+      const installDir = store.get('settings.installDir') || null;
+      const result = await webSearch.ensureRunning(installDir);
+      return { success: result.ok, error: result.error };
     } catch (err) {
       logger.error(`IPC: start-searxng failed — ${err.message}`);
       return { success: false, error: err.message };

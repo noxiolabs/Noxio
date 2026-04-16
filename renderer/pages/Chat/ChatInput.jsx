@@ -56,7 +56,7 @@ function readFile(file) {
  *   dropTick?: number,
  * }} props
  */
-export default function ChatInput({ value, onChange, onSend, onStop, droppedFiles, dropTick }) {
+export default function ChatInput({ value, onChange, onSend, onStop, droppedFiles, dropTick, searching = false }) {
   const streaming     = useSelector((s) => s.chat.streaming);
   const selectedModel = useSelector((s) => s.chat.selectedModel);
   const textareaRef   = useRef(null);
@@ -64,6 +64,14 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
   const prevStreamingRef = useRef(false);
   const [attachments, setAttachments] = useState([]);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [searxngAvailable, setSearxngAvailable] = useState(null);
+
+  // Check SearXNG availability on mount
+  useEffect(() => {
+    window.electronAPI?.checkSearxngHealth?.().then((res) => {
+      setSearxngAvailable(res?.running ?? false);
+    }).catch(() => setSearxngAvailable(false));
+  }, []);
 
   // Auto-focus when streaming ends
   useEffect(() => {
@@ -134,7 +142,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
     setAttachments([]);
   }
 
-  const canSend = !streaming && (value.trim().length > 0 || attachments.length > 0) && !!selectedModel;
+  const canSend = !streaming && !searching && (value.trim().length > 0 || attachments.length > 0) && !!selectedModel;
   const visionSupported = supportsVision(selectedModel);
 
   return (
@@ -194,18 +202,33 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
           />
 
           {/* Web search toggle */}
-          <button
-            onClick={() => setWebSearchEnabled((v) => !v)}
-            disabled={streaming}
-            title={webSearchEnabled ? 'Web search on — click to disable' : 'Enable web search (DuckDuckGo)'}
-            className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-              webSearchEnabled
-                ? 'bg-violet-600/20 text-violet-300 border border-violet-600/40'
-                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-            }`}
-          >
-            <GlobeIcon />
-          </button>
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => setWebSearchEnabled((v) => !v)}
+              disabled={streaming}
+              title={
+                webSearchEnabled
+                  ? searxngAvailable === false
+                    ? 'Web search on — SearXNG will auto-start when you send'
+                    : 'Web search on (SearXNG) — click to disable'
+                  : searxngAvailable === false
+                    ? 'Enable web search — SearXNG will start automatically'
+                    : 'Enable web search via SearXNG'
+              }
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                webSearchEnabled
+                  ? searxngAvailable === false
+                    ? 'bg-amber-600/20 text-amber-300 border border-amber-600/40'
+                    : 'bg-violet-600/20 text-violet-300 border border-violet-600/40'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+              }`}
+            >
+              <GlobeIcon />
+            </button>
+            {searxngAvailable === false && !webSearchEnabled && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500/80" />
+            )}
+          </div>
 
           <textarea
             ref={textareaRef}
@@ -219,7 +242,16 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
           />
 
           <div className="flex-shrink-0 pb-0.5">
-            {streaming ? (
+            {searching ? (
+              <div
+                title="Searching the web…"
+                className="w-8 h-8 rounded-lg bg-amber-600/20 border border-amber-600/40 text-amber-300 flex items-center justify-center"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+              </div>
+            ) : streaming ? (
               <button
                 onClick={onStop}
                 title="Stop generating"
@@ -246,9 +278,15 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
         </div>
       </div>
 
-      <p className="text-center text-[10px] text-zinc-700 mt-1.5">
-        Shift+Enter for new line · runs locally on your GPU
-      </p>
+      {searching ? (
+        <p className="text-center text-[10px] text-amber-500/80 mt-1.5 animate-pulse">
+          Searching the web — starting SearXNG if needed…
+        </p>
+      ) : (
+        <p className="text-center text-[10px] text-zinc-700 mt-1.5">
+          Shift+Enter for new line · runs locally on your GPU
+        </p>
+      )}
     </div>
   );
 }

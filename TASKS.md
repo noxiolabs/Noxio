@@ -125,6 +125,8 @@ Web search backend switched from DuckDuckGo IA API → self-hosted SearXNG (Dock
 - [x] Docker not auto-starting on search — added `ensureRunning()` to `web-search.js`: checks health, runs `docker start noxio-searxng`, polls until ready (20s timeout)
 - [x] SearXNG bot detection blocking requests — added `X-Forwarded-For: 127.0.0.1` + `X-Real-IP: 127.0.0.1` headers to all fetches in `web-search.js`
 - [x] Noisy engine errors (wikidata KeyError, ahmia, torch) — disabled in `settings.yml` template written by `update-searxng` IPC handler
+- [x] Globe button locked when SearXNG not running — removed `searxngAvailable !== false` guard from onClick; button now always toggleable; amber style when enabled+down to signal auto-start pending
+- [x] Default model in Settings → Capabilities not applying to chat — `handleModelChange` now also dispatches `setSelectedModel` to chat slice when capability is `chat`
 - [ ] UI full retheme — complete visual overhaul before public release (separate branch)
 
 ### Phase 6 — Voice Panel (Weeks 11–12) ✅ COMPLETE

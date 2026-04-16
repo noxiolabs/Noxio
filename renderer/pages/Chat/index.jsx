@@ -37,6 +37,7 @@ export default function ChatPanel() {
   const [input, setInput]             = useState('');
   const [streamError, setStreamError] = useState('');
   const [thinkingMode, setThinkingMode] = useState(false);
+  const [searching, setSearching]     = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const droppedFilesRef = useRef(null);
   const [dropTick, setDropTick] = useState(0);
@@ -95,10 +96,6 @@ export default function ChatPanel() {
 
   function buildSearchContext(query, searchResult, originalContent) {
     const lines = [`[Web search: "${query}"]`];
-
-    if (searchResult.abstract?.text) {
-      lines.push(`${searchResult.abstract.source || 'Source'}: ${searchResult.abstract.text}`);
-    }
 
     (searchResult.results ?? []).forEach((r, i) => {
       lines.push(`${i + 1}. ${r.title}${r.snippet ? ` \u2014 ${r.snippet}` : ''}`);
@@ -166,14 +163,19 @@ export default function ChatPanel() {
     // Web search: fetch results and prepend context if enabled
     let webSearchUsed = false;
     if (webSearchEnabled && content.trim() && window.electronAPI?.searchWeb) {
+      setSearching(true);
       try {
         const searchResult = await window.electronAPI.searchWeb(content);
-        if (!searchResult.error && (searchResult.abstract || searchResult.results?.length)) {
+        if (!searchResult.error && searchResult.results?.length) {
           fullContent = buildSearchContext(content, searchResult, fullContent);
           webSearchUsed = true;
+        } else if (searchResult.error) {
+          setStreamError(`Web search failed: ${searchResult.error} — sending without search context`);
         }
-      } catch (_) {
-        // Non-fatal: send without search context
+      } catch (err) {
+        setStreamError(`Web search error: ${err.message} — sending without search context`);
+      } finally {
+        setSearching(false);
       }
     }
 
@@ -288,6 +290,7 @@ export default function ChatPanel() {
           onStop={handleStop}
           droppedFiles={droppedFilesRef.current}
           dropTick={dropTick}
+          searching={searching}
         />
         {streamError && (
           <p className="text-center text-xs text-red-400/80 pb-2 px-4">{streamError}</p>

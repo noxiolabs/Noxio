@@ -11,6 +11,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { setSelectedCapabilities, markServiceInstalled, hydrateSettings, setModel } from '../../store/slices/settings';
+import { setSelectedModel } from '../../store/slices/chat';
 
 const CAPABILITIES = [
   {
@@ -30,6 +31,12 @@ const CAPABILITIES = [
     label: 'Images',
     description: 'Generate images with FLUX.1 via ComfyUI. Requires ~9 GB download.',
     requiresServices: ['comfyui'],
+  },
+  {
+    id: 'web-search',
+    label: 'Web Search',
+    description: 'Real-time web search via SearXNG (self-hosted). Requires Docker.',
+    requiresServices: ['searxng'],
   },
   {
     id: 'voice',
@@ -87,6 +94,10 @@ export default function CapabilitiesSection() {
       if (result?.success) {
         setSelectedModels((prev) => ({ ...prev, [cap]: model }));
         dispatch(setModel({ capability: cap, model }));
+        // Keep chat.selectedModel in sync so ModelSelector reflects the change immediately
+        if (cap === 'chat') {
+          dispatch(setSelectedModel(model));
+        }
       } else {
         const raw = result?.error ?? 'Failed to save model';
         const msg = raw.startsWith('Model not found:')
