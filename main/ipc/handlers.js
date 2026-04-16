@@ -596,11 +596,10 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
   // ─── Web Search ──────────────────────────────────────────────────────────
 
   /**
-   * Searches DuckDuckGo Instant Answers API for the given query.
-   * Returns results with abstract and related topics.
+   * Searches via local SearXNG instance at localhost:8080.
    * Non-fatal: returns { error } on network failure — caller handles gracefully.
    * @param {{ query: string }} payload
-   * @returns {Promise<{ abstract: Object|null, results: Array }|{ error: string }>}
+   * @returns {Promise<{ results: Array }|{ error: string }>}
    */
   ipcMain.handle('search-web', async (_event, { query } = {}) => {
     if (!query || typeof query !== 'string') {
@@ -608,6 +607,107 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
     }
     logger.info(`IPC: search-web "${query.slice(0, 80)}"`);
     return webSearch.search(query);
+  });
+
+  /**
+   * Checks whether the local SearXNG instance is reachable.
+   * @returns {Promise<{ running: boolean }>}
+   */
+  ipcMain.handle('check-searxng-health', async () => {
+    try {
+      logger.info('IPC: check-searxng-health');
+      return await webSearch.checkHealth();
+    } catch (err) {
+      logger.error(`IPC: check-searxng-health failed — ${err.message}`);
+      return { running: false };
+    }
+  });
+
+  /**
+   * Starts the SearXNG Docker container (if stopped).
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  ipcMain.handle('start-searxng', async () => {
+    try {
+      logger.info('IPC: start-searxng');
+      await new Promise((resolve, reject) =>
+        execFile('docker', ['start', 'noxio-searxng'], { timeout: 15_000 }, (err) =>
+          err ? reject(new Error(err.message.split('\n')[0])) : resolve()
+        )
+      );
+      return { success: true };
+    } catch (err) {
+      logger.error(`IPC: start-searxng failed — ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * Pulls the latest SearXNG image, recreates the container with the correct
+   * settings.yml mount (enabling JSON format), and starts it.
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  ipcMain.handle('update-searxng', async () => {
+    function docker(args, timeout = 30_000) {
+      return new Promise((resolve, reject) =>
+        execFile('docker', args, { timeout }, (err) =>
+          err ? reject(new Error(err.message.split('\n')[0])) : resolve()
+        )
+      );
+    }
+
+    try {
+      // Ensure settings.yml exists with JSON format enabled
+      const installDir = store.get('settings.installDir') || app.getPath('userData');
+      const searxngConfigDir = path.join(installDir, 'searxng');
+      fs.mkdirSync(searxngConfigDir, { recursive: true });
+      const settingsYml = path.join(searxngConfigDir, 'settings.yml');
+      if (!fs.existsSync(settingsYml)) {
+        fs.writeFileSync(
+          settingsYml,
+          [
+            'use_default_settings: true',
+            '',
+            'search:',
+            '  formats:',
+            '    - html',
+            '    - json',
+            '',
+            '# Disable engines that fail to initialise on the default Docker image.',
+            'engines:',
+            '  - name: wikidata',
+            '    disabled: true',
+            '  - name: ahmia',
+            '    disabled: true',
+            '  - name: torch',
+            '    disabled: true',
+            '',
+          ].join('\n'),
+          'utf8'
+        );
+      }
+
+      logger.info('IPC: update-searxng — pulling latest image');
+      await docker(['pull', 'searxng/searxng'], 300_000);
+
+      logger.info('IPC: update-searxng — recreating container with settings mount');
+      // Remove existing container (force-stop + delete)
+      await docker(['rm', '-f', 'noxio-searxng']).catch(() => {}); // ignore if not found
+      await docker([
+        'run', '-d',
+        '--name', 'noxio-searxng',
+        '-p', '8080:8080',
+        '--restart', 'unless-stopped',
+        '-v', `${searxngConfigDir}:/etc/searxng`,
+        'searxng/searxng',
+      ]);
+
+      logger.info('IPC: update-searxng — done');
+      return { success: true };
+    } catch (err) {
+      logger.error(`IPC: update-searxng failed — ${err.message}`);
+      return { success: false, error: err.message };
+    }
   });
 
   // ─── Image Generation ────────────────────────────────────────────────────

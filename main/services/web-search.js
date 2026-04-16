@@ -1,31 +1,95 @@
 'use strict';
 
-const DDG_URL = 'https://api.duckduckgo.com/';
-const TIMEOUT_MS = 3000;
+const { execFile } = require('child_process');
+
+const SEARXNG_URL = 'http://localhost:8080/search';
+const SEARXNG_ROOT = 'http://localhost:8080/';
+const CONTAINER_NAME = 'noxio-searxng';
+const TIMEOUT_MS = 5000;
+const HEALTH_TIMEOUT_MS = 2000;
+const START_WAIT_MS = 20_000;
+
+/** Headers required by SearXNG's bot detection when called from localhost. */
+const SEARXNG_HEADERS = {
+  'X-Forwarded-For': '127.0.0.1',
+  'X-Real-IP': '127.0.0.1',
+};
 
 /**
- * Parses a DDG Text field ("Title — snippet") into { title, snippet }.
- * If no em-dash separator found, the whole text is used as title.
- * @param {string} text
- * @returns {{ title: string, snippet: string }}
+ * Checks if SearXNG is reachable at localhost:8080.
+ * @returns {Promise<{ running: boolean }>}
  */
-function parseText(text) {
-  const sep = ' \u2014 '; // ' — '
-  const idx = text.indexOf(sep);
-  if (idx === -1) return { title: text.trim(), snippet: '' };
-  return {
-    title: text.slice(0, idx).trim(),
-    snippet: text.slice(idx + sep.length).trim(),
-  };
+async function checkHealth() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+  try {
+    const response = await fetch(SEARXNG_ROOT, {
+      signal: controller.signal,
+      headers: SEARXNG_HEADERS,
+    });
+    return { running: response.ok };
+  } catch (_) {
+    return { running: false };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
- * Searches DuckDuckGo using the Instant Answers API.
- * Uses Node 20 / Electron 33 built-in fetch with a 3-second timeout.
+ * Attempts to start the noxio-searxng Docker container.
+ * @returns {Promise<void>}
+ */
+function startContainer() {
+  return new Promise((resolve, reject) =>
+    execFile(
+      'docker',
+      ['start', CONTAINER_NAME],
+      { timeout: 15_000, windowsHide: true },
+      (err) => (err ? reject(new Error(err.message.split('\n')[0])) : resolve())
+    )
+  );
+}
+
+/**
+ * Polls SearXNG until it responds or the deadline is reached.
+ * @returns {Promise<boolean>}
+ */
+async function waitUntilReady() {
+  const deadline = Date.now() + START_WAIT_MS;
+  while (Date.now() < deadline) {
+    const { running } = await checkHealth();
+    if (running) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
+/**
+ * Ensures SearXNG is running. Starts the Docker container if it is not.
+ * @returns {Promise<{ ok: boolean, error?: string }>}
+ */
+async function ensureRunning() {
+  const { running } = await checkHealth();
+  if (running) return { ok: true };
+
+  try {
+    await startContainer();
+  } catch (err) {
+    return { ok: false, error: `Failed to start SearXNG container: ${err.message}` };
+  }
+
+  const ready = await waitUntilReady();
+  return ready
+    ? { ok: true }
+    : { ok: false, error: 'SearXNG did not become ready in time' };
+}
+
+/**
+ * Searches via local SearXNG and returns up to 5 results.
+ * Automatically starts the Docker container if it is not already running.
  *
  * @param {string} query
  * @returns {Promise<{
- *   abstract: { text: string, url: string, source: string } | null,
  *   results: Array<{ title: string, snippet: string, url: string }>,
  * } | { error: string }>}
  */
@@ -34,18 +98,22 @@ async function search(query) {
     return { error: 'query required' };
   }
 
+  const { ok, error: startError } = await ensureRunning();
+  if (!ok) return { error: startError ?? 'SearXNG is not running' };
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const url = new URL(DDG_URL);
+    const url = new URL(SEARXNG_URL);
     url.searchParams.set('q', query.trim());
     url.searchParams.set('format', 'json');
-    url.searchParams.set('no_redirect', '1');
-    url.searchParams.set('no_html', '1');
-    url.searchParams.set('skip_disambig', '1');
+    url.searchParams.set('language', 'en');
 
-    const response = await fetch(url.toString(), { signal: controller.signal });
+    const response = await fetch(url.toString(), {
+      signal: controller.signal,
+      headers: SEARXNG_HEADERS,
+    });
 
     if (!response.ok) {
       return { error: `HTTP ${response.status}` };
@@ -53,24 +121,13 @@ async function search(query) {
 
     const data = await response.json();
 
-    // Abstract
-    const abstract =
-      data.AbstractText?.trim()
-        ? { text: data.AbstractText.trim(), url: data.AbstractURL || '', source: data.AbstractSource || '' }
-        : null;
+    const results = (data.results ?? []).slice(0, 5).map((item) => ({
+      title: item.title ?? '',
+      snippet: item.content ?? '',
+      url: item.url ?? '',
+    }));
 
-    // Flat results: Results[] then RelatedTopics[] (skip nested group entries)
-    const flatItems = [
-      ...(data.Results ?? []),
-      ...(data.RelatedTopics ?? []).filter((t) => t.Text && t.FirstURL),
-    ];
-
-    const results = flatItems.slice(0, 5).map((item) => {
-      const { title, snippet } = parseText(item.Text ?? '');
-      return { title, snippet, url: item.FirstURL ?? '' };
-    });
-
-    return { abstract, results };
+    return { results };
   } catch (err) {
     if (err.name === 'AbortError') {
       return { error: 'timeout' };
@@ -81,4 +138,4 @@ async function search(query) {
   }
 }
 
-module.exports = { search };
+module.exports = { search, checkHealth, ensureRunning };

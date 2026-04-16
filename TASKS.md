@@ -107,7 +107,7 @@ Current task list, status, and phase breakdown. Update this file at the start of
 
 ## Active Sprint
 
-**Week 10: Pre-Phase 6 Hardening**
+**Week 10: Pre-Phase 6 Hardening + P2 Web Search Fixes**
 
 ### Pre-Phase 6 Hardening
 
@@ -117,6 +117,15 @@ Current task list, status, and phase breakdown. Update this file at the start of
 - [x] Hardware/model dynamism audit — detection is fully dynamic; CUDA cu126 is backwards-compatible across all NVIDIA cards; CLAUDE.md corrected
 - [x] InstallingScreen responsive fix — 3-zone layout (pinned header+progress, scrollable steps, pinned footer); all other wizard screens get overflow-y-auto
 - [x] Dependency/install state tracking — manifest.js module, electron-store manifest key, startup verification pass, 2 IPC channels, manifest Redux slice
+
+### P2 Web Search — SearXNG Fixes (2026-04-16)
+
+Web search backend switched from DuckDuckGo IA API → self-hosted SearXNG (Docker). Two bugs found and fixed:
+
+- [x] Docker not auto-starting on search — added `ensureRunning()` to `web-search.js`: checks health, runs `docker start noxio-searxng`, polls until ready (20s timeout)
+- [x] SearXNG bot detection blocking requests — added `X-Forwarded-For: 127.0.0.1` + `X-Real-IP: 127.0.0.1` headers to all fetches in `web-search.js`
+- [x] Noisy engine errors (wikidata KeyError, ahmia, torch) — disabled in `settings.yml` template written by `update-searxng` IPC handler
+- [ ] UI full retheme — complete visual overhaul before public release (separate branch)
 
 ### Phase 6 — Voice Panel (Weeks 11–12) ✅ COMPLETE
 
