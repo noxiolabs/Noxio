@@ -103,8 +103,8 @@ export default function CreatePanel() {
   if (comfyuiStatus === 'not-installed') {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center gap-3 p-8">
-        <p className="text-white/60 text-sm">Image generation is not set up.</p>
-        <p className="text-white/40 text-xs">ComfyUI was not installed during setup. To enable image generation, go to Settings and add the Images capability.</p>
+        <p className="text-fg/60 text-sm">Image generation is not set up.</p>
+        <p className="text-fg-faint text-xs">ComfyUI was not installed during setup. To enable image generation, go to Settings and add the Images capability.</p>
       </div>
     );
   }
@@ -112,22 +112,22 @@ export default function CreatePanel() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left column: controls */}
-      <div className="w-[300px] flex-shrink-0 flex flex-col gap-5 p-5 border-r border-zinc-800/60 overflow-y-auto">
+      <div className="w-[300px] flex-shrink-0 flex flex-col gap-5 p-5 border-r border-stroke overflow-y-auto">
         <div>
-          <p className="text-sm font-semibold text-zinc-200 mb-1">Create</p>
-          <p className="text-xs text-zinc-500">Generate images with local AI</p>
+          <p className="text-sm font-semibold text-fg mb-1">Create</p>
+          <p className="text-xs text-fg-dim">Generate images with local AI</p>
         </div>
 
         {/* Prompt */}
         <div>
-          <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Prompt</p>
+          <p className="text-[10px] text-fg-dim uppercase tracking-wider mb-2">Prompt</p>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             disabled={isGenerating}
             placeholder="Describe the image you want to create..."
             rows={5}
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 resize-none focus:outline-none focus:border-violet-500/60 transition-colors disabled:opacity-50"
+            className="w-full bg-panel border border-card rounded-lg px-3 py-2.5 text-sm text-fg placeholder-fg-faint resize-none focus:outline-none focus:border-accent/60 transition-colors disabled:opacity-50"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate();
             }}
@@ -144,7 +144,7 @@ export default function CreatePanel() {
         <button
           onClick={handleGenerate}
           disabled={isGenerating || !prompt.trim()}
-          className="w-full py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold text-white transition-colors flex items-center justify-center gap-2"
+          className="w-full py-2.5 rounded-lg bg-accent hover:bg-accent/80 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold text-white transition-colors flex items-center justify-center gap-2"
         >
           {isGenerating ? (
             <>
@@ -158,9 +158,9 @@ export default function CreatePanel() {
 
         {/* Progress bar */}
         {isGenerating && (
-          <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+          <div className="w-full bg-card rounded-full h-1.5 overflow-hidden">
             <div
-              className="h-full bg-violet-500 rounded-full transition-all duration-300 ease-out"
+              className="h-full bg-accent rounded-full transition-all duration-300 ease-out"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -173,7 +173,7 @@ export default function CreatePanel() {
           </p>
         )}
 
-        <p className="text-[10px] text-zinc-700 mt-auto">
+        <p className="text-[10px] text-fg-dim mt-auto">
           Tip: press Ctrl+Enter to generate
         </p>
       </div>

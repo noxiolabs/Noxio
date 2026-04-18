@@ -37,10 +37,10 @@ export default class ErrorBoundary extends React.Component {
       return (
         <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
           <p className="text-base font-semibold text-red-400">This panel crashed</p>
-          <p className="text-xs text-zinc-600 max-w-sm font-mono">{this.state.message}</p>
+          <p className="text-xs text-fg-faint max-w-sm font-mono">{this.state.message}</p>
           <button
             onClick={() => this.setState({ hasError: false, message: '' })}
-            className="mt-1 px-4 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition-colors"
+            className="mt-1 px-4 py-1.5 rounded-md bg-card hover:bg-raise text-fg text-sm transition-colors"
           >
             Try again
           </button>
@@ -49,12 +49,12 @@ export default class ErrorBoundary extends React.Component {
     }
 
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-[#0f0f11] text-zinc-100 gap-4 p-8 text-center">
+      <div className="flex flex-col items-center justify-center h-screen bg-canvas text-fg gap-4 p-8 text-center">
         <p className="text-lg font-semibold text-red-400">Something went wrong</p>
-        <p className="text-sm text-zinc-500 max-w-md font-mono">{this.state.message}</p>
+        <p className="text-sm text-fg-dim max-w-md font-mono">{this.state.message}</p>
         <button
           onClick={this.handleReload}
-          className="mt-2 px-4 py-2 rounded-md bg-violet-600 hover:bg-violet-500 text-white text-sm transition-colors"
+          className="mt-2 px-4 py-2 rounded-md bg-accent hover:bg-accent/80 text-white text-sm transition-colors"
         >
           Reload app
         </button>

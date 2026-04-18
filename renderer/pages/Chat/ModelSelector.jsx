@@ -80,25 +80,25 @@ export default function ModelSelector({ conversationId }) {
           // Refresh model list every time the dropdown opens (user may have pulled a new model)
           if (next) load();
         }}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/50 text-zinc-300 text-xs transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-card/60 hover:bg-card border border-stroke/50 text-fg text-xs transition-colors"
       >
         <span className="max-w-[160px] truncate">{label}</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="text-zinc-500 flex-shrink-0">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="text-fg-dim flex-shrink-0">
           <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
         </svg>
       </button>
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 min-w-[220px] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden">
+        <div className="absolute top-full mt-1 left-0 z-50 min-w-[220px] bg-panel border border-stroke rounded-lg shadow-xl overflow-hidden">
           {models.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-zinc-500">
+            <div className="px-3 py-2 text-xs text-fg-dim">
               <p>No models found.</p>
               <button
                 onClick={() => {
                   setOpen(false);
                   window.electronAPI?.openSettings?.('models');
                 }}
-                className="mt-1 text-violet-400 hover:text-violet-300 underline underline-offset-2"
+                className="mt-1 text-accent hover:text-accent/80 underline underline-offset-2"
               >
                 Open Settings → Models to add one
               </button>
@@ -107,7 +107,7 @@ export default function ModelSelector({ conversationId }) {
             orderedCompanies.map((company) => (
               <div key={company}>
                 {/* Company header */}
-                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600 select-none">
+                <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-faint select-none">
                   {company}
                 </div>
                 {grouped[company].map((m) => (
@@ -116,13 +116,13 @@ export default function ModelSelector({ conversationId }) {
                     onClick={() => select(m.name)}
                     className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between gap-3 ${
                       m.name === selectedModel
-                        ? 'text-violet-400 bg-violet-600/10'
-                        : 'text-zinc-300 hover:bg-zinc-800'
+                        ? 'text-accent bg-accent/10'
+                        : 'text-fg hover:bg-card'
                     }`}
                   >
                     <span className="truncate">{m.name}</span>
                     {m.name === selectedModel && (
-                      <span className="text-violet-500 flex-shrink-0">✓</span>
+                      <span className="text-accent flex-shrink-0">✓</span>
                     )}
                   </button>
                 ))}

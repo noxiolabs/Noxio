@@ -131,8 +131,8 @@ export default function ModelsSection() {
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-base font-semibold text-white mb-1">Installed Models</h2>
-          <p className="text-xs text-zinc-500">
+          <h2 className="text-base font-semibold text-fg mb-1">Installed Models</h2>
+          <p className="text-xs text-fg-dim">
             Ollama models installed on this machine. Delete to free disk space.
           </p>
         </div>
@@ -140,7 +140,7 @@ export default function ModelsSection() {
           onClick={loadManifest}
           disabled={loading}
           title="Refresh model list"
-          className="mt-0.5 p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-40"
+          className="mt-0.5 p-1.5 rounded-lg text-fg-dim hover:text-fg hover:bg-card transition-colors disabled:opacity-40"
         >
           <RefreshIcon spinning={loading} />
         </button>
@@ -149,20 +149,20 @@ export default function ModelsSection() {
       {/* Model list */}
       <div className="flex flex-col gap-2">
         {loading && (
-          <p className="text-sm text-zinc-500">Loading…</p>
+          <p className="text-sm text-fg-dim">Loading…</p>
         )}
         {!loading && models.length === 0 && (
-          <p className="text-sm text-zinc-500">No Ollama models found.</p>
+          <p className="text-sm text-fg-dim">No Ollama models found.</p>
         )}
         {models.map(({ modelId, sizeGB }) => (
           <div
             key={modelId}
-            className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700/60"
+            className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-card border border-stroke/60"
           >
             <div>
-              <span className="text-sm text-white font-medium">{modelId}</span>
+              <span className="text-sm text-fg font-medium">{modelId}</span>
               {sizeGB != null && (
-                <span className="ml-2 text-xs text-zinc-500">{sizeGB} GB</span>
+                <span className="ml-2 text-xs text-fg-dim">{sizeGB} GB</span>
               )}
             </div>
             <button
@@ -181,7 +181,7 @@ export default function ModelsSection() {
 
       {/* Pull new model */}
       <div>
-        <h3 className="text-sm font-semibold text-zinc-300 mb-2">
+        <h3 className="text-sm font-semibold text-fg mb-2">
           {pullInput ? 'Re-download model' : 'Pull a model'}
         </h3>
         <div className="flex gap-2">
@@ -192,25 +192,25 @@ export default function ModelsSection() {
             onKeyDown={handlePullKeyDown}
             placeholder="e.g. qwen2.5:7b"
             disabled={!!pullInProgress}
-            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500 disabled:opacity-50"
+            className="flex-1 bg-card border border-stroke rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:border-accent disabled:opacity-50"
           />
           <button
             onClick={handlePull}
             disabled={!pullInput.trim() || !!pullInProgress}
-            className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+            className="px-4 py-2 rounded-lg bg-accent hover:bg-accent/80 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
           >
             Pull
           </button>
         </div>
         {pullInProgress && (
           <div className="mt-3">
-            <div className="flex justify-between text-xs text-zinc-400 mb-1">
+            <div className="flex justify-between text-xs text-fg-muted mb-1">
               <span>Pulling {pullInProgress}…</span>
               <span>{pullPercent}%</span>
             </div>
-            <div className="h-1.5 rounded-full bg-zinc-700 overflow-hidden">
+            <div className="h-1.5 rounded-full bg-card overflow-hidden">
               <div
-                className="h-full rounded-full bg-violet-500 transition-all duration-300"
+                className="h-full rounded-full bg-accent transition-all duration-300"
                 style={{ width: `${pullPercent}%` }}
               />
             </div>
@@ -223,7 +223,7 @@ export default function ModelsSection() {
 
       {/* Services status — sourced from live health checker, always accurate */}
       <div>
-        <h3 className="text-sm font-semibold text-zinc-300 mb-2">Services</h3>
+        <h3 className="text-sm font-semibold text-fg mb-2">Services</h3>
         <div className="flex flex-col gap-2">
           {Object.entries(liveServices).map(([name, entry]) => {
             const status = entry.status;
@@ -233,9 +233,9 @@ export default function ModelsSection() {
             return (
               <div
                 key={name}
-                className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700/60"
+                className="flex items-center justify-between px-3 py-2 rounded-lg bg-card border border-stroke/60"
               >
-                <span className="text-sm text-zinc-200 capitalize">{name}</span>
+                <span className="text-sm text-fg capitalize">{name}</span>
                 {isRunning ? (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">
                     Running
@@ -245,11 +245,11 @@ export default function ModelsSection() {
                     Starting
                   </span>
                 ) : isNotInstalled ? (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-700 text-zinc-500 font-medium">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-card text-fg-dim font-medium">
                     Not installed
                   </span>
                 ) : (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-700 text-zinc-400 font-medium capitalize">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-card text-fg-muted font-medium capitalize">
                     {status}
                   </span>
                 )}

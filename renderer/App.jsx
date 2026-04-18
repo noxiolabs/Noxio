@@ -10,7 +10,7 @@
  * Chat and Create panels are live. Voice and Agent are coming in a future release.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { setHardware } from './store/slices/infrastructure';
 import SetupWizard from './pages/Setup';
@@ -26,8 +26,8 @@ import SettingsOverlay from './components/SettingsOverlay';
 function ComingSoon({ label, description }) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-      <p className="text-zinc-400 font-medium">{label}</p>
-      <p className="text-zinc-600 text-sm max-w-xs">{description ?? 'Coming in a future release'}</p>
+      <p className="text-fg-muted font-medium">{label}</p>
+      <p className="text-fg-faint text-sm max-w-xs">{description ?? 'Coming in a future release'}</p>
     </div>
   );
 }
@@ -37,8 +37,8 @@ function GameModeOverlay({ onDisable }) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
       <div className="text-green-400 text-4xl">🎮</div>
-      <p className="text-zinc-200 font-semibold text-lg">Game Mode Active</p>
-      <p className="text-zinc-500 text-sm max-w-xs">
+      <p className="text-fg font-semibold text-lg">Game Mode Active</p>
+      <p className="text-fg-faint text-sm max-w-xs">
         All AI services are paused. Your GPU VRAM is free for gaming.
       </p>
       <button
@@ -55,7 +55,13 @@ export default function App() {
   const dispatch = useDispatch();
   const setupComplete = useSelector((s) => s.settings.setupComplete);
   const gameModeActive = useSelector((s) => s.settings.gameModeActive);
+  const theme = useSelector((s) => s.settings.ui?.theme ?? 'dark');
   const [activeMode, setActiveMode] = useState('chat');
+
+  // Sync body background so the area outside the root div matches the theme.
+  useLayoutEffect(() => {
+    document.body.classList.toggle('light', theme === 'light');
+  }, [theme]);
 
   /**
    * Handles a mode change from the Sidebar. Invokes the IPC switch-mode channel
@@ -106,7 +112,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col h-screen bg-[#0f0f11] text-zinc-100 overflow-hidden">
+      <div className={`flex flex-col h-screen bg-canvas text-fg overflow-hidden${theme === 'light' ? ' light' : ''}`}>
         <div className="flex flex-1 overflow-hidden">
           <Sidebar activeMode={activeMode} onModeChange={handleModeChange} />
 

@@ -43,12 +43,12 @@ function parseInlineThinking(content) {
 function CodeBlock({ children, className }) {
   const lang = (className ?? '').replace('language-', '') || 'text';
   return (
-    <div className="my-2 rounded-lg overflow-hidden border border-zinc-700/50">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800/80 border-b border-zinc-700/50">
-        <span className="text-[10px] text-zinc-500 font-mono">{lang}</span>
+    <div className="my-2 rounded-lg overflow-hidden border border-stroke/50">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-card/80 border-b border-stroke/50">
+        <span className="text-[10px] text-fg-dim font-mono">{lang}</span>
       </div>
-      <pre className="p-3 overflow-x-auto bg-zinc-900/80 text-sm">
-        <code className="text-zinc-200 font-mono text-[13px] leading-relaxed">{children}</code>
+      <pre className="p-3 overflow-x-auto bg-panel/80 text-sm">
+        <code className="text-fg font-mono text-[13px] leading-relaxed">{children}</code>
       </pre>
     </div>
   );
@@ -59,7 +59,7 @@ const MD_COMPONENTS = {
   code({ node, inline, className, children, ...props }) {
     if (inline) {
       return (
-        <code className="px-1.5 py-0.5 rounded bg-zinc-800 text-violet-300 font-mono text-[13px]" {...props}>
+        <code className="px-1.5 py-0.5 rounded bg-card text-accent font-mono text-[13px]" {...props}>
           {children}
         </code>
       );
@@ -76,27 +76,27 @@ const MD_COMPONENTS = {
     return <ol className="mb-3 ml-4 list-decimal space-y-1">{children}</ol>;
   },
   li({ children }) {
-    return <li className="text-zinc-300">{children}</li>;
+    return <li className="text-fg">{children}</li>;
   },
-  h1({ children }) { return <h1 className="text-xl font-semibold text-white mt-4 mb-2">{children}</h1>; },
-  h2({ children }) { return <h2 className="text-lg font-semibold text-white mt-4 mb-2">{children}</h2>; },
-  h3({ children }) { return <h3 className="text-base font-semibold text-zinc-200 mt-3 mb-1">{children}</h3>; },
+  h1({ children }) { return <h1 className="text-xl font-semibold text-fg mt-4 mb-2">{children}</h1>; },
+  h2({ children }) { return <h2 className="text-lg font-semibold text-fg mt-4 mb-2">{children}</h2>; },
+  h3({ children }) { return <h3 className="text-base font-semibold text-fg mt-3 mb-1">{children}</h3>; },
   blockquote({ children }) {
     return (
-      <blockquote className="border-l-2 border-violet-500/50 pl-3 my-2 text-zinc-400 italic">
+      <blockquote className="border-l-2 border-accent/50 pl-3 my-2 text-fg-muted italic">
         {children}
       </blockquote>
     );
   },
   a({ href, children }) {
     return (
-      <a href={href} target="_blank" rel="noreferrer" className="text-violet-400 underline underline-offset-2 hover:text-violet-300">
+      <a href={href} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2 hover:text-accent/80">
         {children}
       </a>
     );
   },
   hr() {
-    return <hr className="my-4 border-zinc-700" />;
+    return <hr className="my-4 border-stroke" />;
   },
   table({ children }) {
     return (
@@ -106,10 +106,10 @@ const MD_COMPONENTS = {
     );
   },
   th({ children }) {
-    return <th className="border border-zinc-700 px-3 py-1.5 text-left text-zinc-200 bg-zinc-800/60 font-medium">{children}</th>;
+    return <th className="border border-stroke px-3 py-1.5 text-left text-fg bg-card/60 font-medium">{children}</th>;
   },
   td({ children }) {
-    return <td className="border border-zinc-700 px-3 py-1.5 text-zinc-300">{children}</td>;
+    return <td className="border border-stroke px-3 py-1.5 text-fg">{children}</td>;
   },
 };
 
@@ -130,10 +130,10 @@ function ThinkingBlock({ thinking, isStreaming }) {
   if (!thinking) return null;
 
   return (
-    <div className="mb-3 rounded-lg border border-zinc-700/50 bg-zinc-900/60 overflow-hidden">
+    <div className="mb-3 rounded-lg border border-stroke/50 bg-panel/60 overflow-hidden">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-fg-dim hover:text-fg hover:bg-card/40 transition-colors"
       >
         <BrainIcon />
         <span className="flex-1">
@@ -143,10 +143,10 @@ function ThinkingBlock({ thinking, isStreaming }) {
       </button>
 
       {open && (
-        <div className="px-3 pb-3 pt-0.5 text-xs text-zinc-500 leading-relaxed whitespace-pre-wrap border-t border-zinc-800/60">
+        <div className="px-3 pb-3 pt-0.5 text-xs text-fg-dim leading-relaxed whitespace-pre-wrap border-t border-stroke-dim/60">
           {thinking}
           {isStreaming && (
-            <span className="inline-block w-0.5 h-3 bg-zinc-600 animate-pulse ml-0.5 align-middle" />
+            <span className="inline-block w-0.5 h-3 bg-raise animate-pulse ml-0.5 align-middle" />
           )}
         </div>
       )}
@@ -174,7 +174,7 @@ export default function MessageBubble({ message, isStreaming }) {
               {attachments.map((att, i) => (
                 <span
                   key={`${att.name}-${i}`}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 text-[11px]"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-card border border-stroke text-fg-muted text-[11px]"
                 >
                   <span>{att.type === 'image' ? '🖼' : '📄'}</span>
                   <span className="max-w-[120px] truncate">{att.name}</span>
@@ -183,11 +183,11 @@ export default function MessageBubble({ message, isStreaming }) {
             </div>
           )}
           {/* Message bubble */}
-          <div className="px-4 py-2.5 rounded-2xl rounded-br-md bg-violet-600/20 border border-violet-600/30 text-zinc-100 text-sm leading-relaxed whitespace-pre-wrap">
+          <div className="px-4 py-2.5 rounded-2xl rounded-br-md bg-accent text-white text-sm leading-relaxed whitespace-pre-wrap">
             {message.content}
           </div>
           {message.webSearchUsed && (
-            <div className="flex items-center gap-1 mt-1 text-[10px] text-zinc-500">
+            <div className="flex items-center gap-1 mt-1 text-[10px] text-fg-dim">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <line x1="2" y1="12" x2="22" y2="12" />
@@ -217,11 +217,11 @@ export default function MessageBubble({ message, isStreaming }) {
   return (
     <div className="flex mb-4 gap-3">
       {/* Assistant avatar dot */}
-      <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <div className="w-2 h-2 rounded-full bg-violet-500" />
+      <div className="w-6 h-6 rounded-full bg-card border border-stroke flex items-center justify-center flex-shrink-0 mt-0.5">
+        <div className="w-2 h-2 rounded-full bg-accent" />
       </div>
 
-      <div className="flex-1 min-w-0 text-sm text-zinc-200">
+      <div className="flex-1 min-w-0 text-sm text-fg">
         {thinkingText && (
           <ThinkingBlock thinking={thinkingText} isStreaming={isStreaming && isThinkingPhase} />
         )}
@@ -233,7 +233,7 @@ export default function MessageBubble({ message, isStreaming }) {
         ) : null}
 
         {isStreaming && !isThinkingPhase && (
-          <span className="inline-block w-0.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle" />
+          <span className="inline-block w-0.5 h-4 bg-accent animate-pulse ml-0.5 align-middle" />
         )}
       </div>
     </div>

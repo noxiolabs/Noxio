@@ -147,7 +147,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
 
   return (
     <div className="flex-shrink-0 px-4 pb-4 pt-2">
-      <div className="flex flex-col bg-zinc-900/80 border border-zinc-700/60 rounded-xl focus-within:border-zinc-600 transition-colors">
+      <div className="flex flex-col bg-panel/80 border border-stroke/60 rounded-xl focus-within:border-stroke transition-colors">
         {/* Attachment chips */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
@@ -159,7 +159,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
                   className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border ${
                     isImageOnNonVision
                       ? 'bg-amber-900/20 border-amber-700/40 text-amber-400'
-                      : 'bg-zinc-800 border-zinc-700 text-zinc-300'
+                      : 'bg-card border-stroke text-fg'
                   }`}
                 >
                   <span>{att.type === 'image' ? '🖼' : '📄'}</span>
@@ -169,7 +169,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
                   )}
                   <button
                     onClick={() => removeAttachment(i)}
-                    className="ml-0.5 text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="ml-0.5 text-fg-dim hover:text-fg transition-colors"
                     aria-label={`Remove ${att.name}`}
                   >
                     ×
@@ -187,7 +187,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
             onClick={() => fileInputRef.current?.click()}
             disabled={streaming || attachments.length >= MAX_ATTACHMENTS}
             title="Attach file (image, txt, md, pdf)"
-            className="flex-shrink-0 w-7 h-7 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+            className="flex-shrink-0 w-7 h-7 rounded-md text-fg-dim hover:text-fg hover:bg-card disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
           >
             <PaperclipIcon />
           </button>
@@ -219,8 +219,8 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
                 webSearchEnabled
                   ? searxngAvailable === false
                     ? 'bg-amber-600/20 text-amber-300 border border-amber-600/40'
-                    : 'bg-violet-600/20 text-violet-300 border border-violet-600/40'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                    : 'bg-accent/20 text-accent border border-accent/40'
+                  : 'text-fg-dim hover:text-fg hover:bg-card'
               }`}
             >
               <GlobeIcon />
@@ -238,7 +238,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
             placeholder={selectedModel ? 'Message…' : 'Select a model to start chatting'}
             disabled={!selectedModel || streaming}
             rows={1}
-            className="flex-1 bg-transparent text-zinc-100 placeholder-zinc-600 text-sm resize-none outline-none leading-relaxed max-h-[200px] disabled:opacity-40"
+            className="flex-1 bg-transparent text-fg placeholder-fg-faint text-sm resize-none outline-none leading-relaxed max-h-[200px] disabled:opacity-40"
           />
 
           <div className="flex-shrink-0 pb-0.5">
@@ -255,7 +255,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
               <button
                 onClick={onStop}
                 title="Stop generating"
-                className="w-8 h-8 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-300 flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-lg bg-raise hover:bg-raise/80 text-fg flex items-center justify-center transition-colors"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                   <rect x="2" y="2" width="8" height="8" rx="1" />
@@ -266,7 +266,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
                 onClick={handleSendClick}
                 disabled={!canSend}
                 title="Send (Enter)"
-                className="w-8 h-8 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-lg bg-accent hover:bg-accent/80 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13" />
@@ -283,7 +283,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
           Searching the web — starting SearXNG if needed…
         </p>
       ) : (
-        <p className="text-center text-[10px] text-zinc-700 mt-1.5">
+        <p className="text-center text-[10px] text-fg-dim mt-1.5">
           Shift+Enter for new line · runs locally on your GPU
         </p>
       )}

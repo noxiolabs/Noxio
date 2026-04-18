@@ -66,7 +66,7 @@ function createWindow() {
     height: 800,
     minWidth: 960,
     minHeight: 600,
-    backgroundColor: '#0f0f11',
+    backgroundColor: '#131517',
     show: false, // revealed in 'ready-to-show' to avoid white flash
     autoHideMenuBar: true,
     webPreferences: {

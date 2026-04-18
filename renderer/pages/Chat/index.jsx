@@ -229,11 +229,11 @@ export default function ChatPanel() {
     >
       {/* Drag overlay */}
       {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-900/80 border-2 border-dashed border-violet-500/60 rounded-xl pointer-events-none">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-panel/80 border-2 border-dashed border-accent/60 rounded-xl pointer-events-none">
           <div className="text-center">
             <div className="text-4xl mb-2">📎</div>
-            <p className="text-violet-300 font-medium text-sm">Drop files here</p>
-            <p className="text-zinc-500 text-xs mt-1">Images, PDF, TXT, MD</p>
+            <p className="text-accent font-medium text-sm">Drop files here</p>
+            <p className="text-fg-dim text-xs mt-1">Images, PDF, TXT, MD</p>
           </div>
         </div>
       )}
@@ -242,10 +242,21 @@ export default function ChatPanel() {
       {/* Chat area */}
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/60 flex-shrink-0">
-          <ModelSelector conversationId={activeId} />
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-stroke flex-shrink-0 min-h-[48px]">
+          {/* Conversation title — primary label */}
+          <div className="flex-1 min-w-0">
+            <h1 className="text-sm font-semibold text-fg truncate leading-tight">
+              {activeConversation?.title ?? 'New conversation'}
+            </h1>
+            {activeConversation && (
+              <p className="text-[10px] text-fg-dim leading-tight mt-0.5">
+                {activeConversation.messages.filter((m) => m.role === 'user').length} messages
+              </p>
+            )}
+          </div>
 
-          <div className="flex items-center gap-3">
+          {/* Right controls */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             {/* Thinking mode toggle — only for models with toggleable thinking (Qwen 3/3.5) */}
             {supportsThinkingToggle(selectedModel) && (
               <button
@@ -253,8 +264,8 @@ export default function ChatPanel() {
                 title={thinkingMode ? 'Thinking mode on — click to disable' : 'Enable thinking mode'}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors ${
                   thinkingMode
-                    ? 'bg-violet-600/20 text-violet-300 border border-violet-600/40'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 border border-transparent'
+                    ? 'bg-accent/20 text-accent border border-accent/40'
+                    : 'text-fg-dim hover:text-fg hover:bg-card/60 border border-transparent'
                 }`}
               >
                 <BrainIcon />
@@ -262,20 +273,18 @@ export default function ChatPanel() {
               </button>
             )}
 
-            <div className="text-xs text-zinc-500">
-              {streaming ? (
-                <span className="text-violet-400 font-medium animate-pulse">Generating…</span>
-              ) : activeConversation ? (
-                `${activeConversation.messages.filter((m) => m.role === 'user').length} messages`
-              ) : null}
-            </div>
+            {streaming && (
+              <span className="text-xs text-accent font-medium animate-pulse">Generating…</span>
+            )}
+
+            <ModelSelector conversationId={activeId} />
           </div>
         </div>
 
         {/* Full-width streaming progress bar */}
         {streaming && (
-          <div className="h-0.5 w-full bg-zinc-800 flex-shrink-0">
-            <div className="h-full bg-violet-500/70 animate-pulse w-full" />
+          <div className="h-0.5 w-full bg-card flex-shrink-0">
+            <div className="h-full bg-accent/70 animate-pulse w-full" />
           </div>
         )}
 

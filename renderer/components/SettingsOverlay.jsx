@@ -68,18 +68,18 @@ export default function SettingsOverlay() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-zinc-950"
+      className="fixed inset-0 z-50 flex flex-col bg-canvas"
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
     >
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/60 flex-shrink-0">
-        <h1 className="text-base font-semibold text-white tracking-wide">Settings</h1>
+      <div className="flex items-center justify-between px-6 py-4 border-b border-stroke flex-shrink-0">
+        <h1 className="text-base font-semibold text-fg tracking-wide">Settings</h1>
         <button
           onClick={() => dispatch(closeSettingsPanel())}
           title="Close settings"
-          className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 rounded-lg hover:bg-zinc-800"
+          className="text-fg-dim hover:text-fg transition-colors p-1 rounded-lg hover:bg-card"
         >
           <CloseIcon />
         </button>
@@ -88,15 +88,15 @@ export default function SettingsOverlay() {
       {/* Body: left rail + right panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left rail */}
-        <nav className="w-[240px] flex-shrink-0 border-r border-zinc-800/60 py-4 flex flex-col gap-0.5 overflow-y-auto">
+        <nav className="w-[240px] flex-shrink-0 border-r border-stroke py-4 flex flex-col gap-0.5 overflow-y-auto">
           {SECTIONS.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => dispatch(openSettingsPanel(key))}
               className={`text-left px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors ${
                 activeSection === key
-                  ? 'bg-violet-600/20 text-violet-300 font-medium'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                  ? 'bg-accent/15 text-fg font-medium'
+                  : 'text-fg-muted hover:text-fg hover:bg-card/60'
               }`}
             >
               {label}

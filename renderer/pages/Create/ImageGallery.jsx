@@ -43,11 +43,11 @@ export default function ImageGallery({ currentImage, gallery, onSelectImage }) {
   if (!currentImage && gallery.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-8">
-        <div className="w-16 h-16 rounded-2xl bg-zinc-800/60 flex items-center justify-center mb-4">
+        <div className="w-16 h-16 rounded-2xl bg-card/60 flex items-center justify-center mb-4">
           <ImagePlaceholderIcon />
         </div>
-        <p className="text-zinc-400 text-sm font-medium">Your generated images will appear here</p>
-        <p className="text-zinc-600 text-xs mt-1">Enter a prompt and click Generate</p>
+        <p className="text-fg-muted text-sm font-medium">Your generated images will appear here</p>
+        <p className="text-fg-faint text-xs mt-1">Enter a prompt and click Generate</p>
       </div>
     );
   }
@@ -56,7 +56,7 @@ export default function ImageGallery({ currentImage, gallery, onSelectImage }) {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Current image — full size */}
       {currentImage && (
-        <div className="flex-1 relative overflow-hidden rounded-xl bg-zinc-900 min-h-0">
+        <div className="flex-1 relative overflow-hidden rounded-xl bg-panel min-h-0">
           <img
             src={currentImage.src}
             alt={currentImage.prompt}
@@ -64,7 +64,7 @@ export default function ImageGallery({ currentImage, gallery, onSelectImage }) {
           />
           <button
             onClick={() => saveImage(currentImage.src, currentImage.prompt)}
-            className="absolute bottom-3 right-3 px-3 py-1.5 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs rounded-lg backdrop-blur-sm transition-colors border border-zinc-700/50"
+            className="absolute bottom-3 right-3 px-3 py-1.5 bg-panel/80 hover:bg-card text-fg hover:text-fg text-xs rounded-lg backdrop-blur-sm transition-colors border border-stroke/50"
           >
             Save
           </button>
@@ -79,8 +79,8 @@ export default function ImageGallery({ currentImage, gallery, onSelectImage }) {
               key={img.id}
               className={`relative flex-shrink-0 cursor-pointer group rounded-lg overflow-hidden border-2 transition-colors ${
                 currentImage?.id === img.id
-                  ? 'border-violet-500'
-                  : 'border-zinc-800 hover:border-zinc-600'
+                  ? 'border-accent'
+                  : 'border-card hover:border-raise'
               }`}
               onClick={() => onSelectImage(img)}
             >
@@ -108,7 +108,7 @@ export default function ImageGallery({ currentImage, gallery, onSelectImage }) {
 
 function ImagePlaceholderIcon() {
   return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-fg-faint">
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <circle cx="8.5" cy="8.5" r="1.5" />
       <polyline points="21 15 16 10 5 21" />

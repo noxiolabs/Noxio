@@ -21,7 +21,7 @@ const STYLES = [
 export default function StyleSelector({ value, onChange, disabled = false }) {
   return (
     <div>
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Style</p>
+      <p className="text-[10px] text-fg-dim uppercase tracking-wider mb-2">Style</p>
       <div className="flex flex-wrap gap-2">
         {STYLES.map(({ id, label }) => (
           <button
@@ -30,8 +30,8 @@ export default function StyleSelector({ value, onChange, disabled = false }) {
             disabled={disabled}
             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               value === id
-                ? 'bg-violet-600 text-white'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                ? 'bg-accent text-white'
+                : 'bg-card text-fg-muted hover:bg-raise hover:text-fg'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
             {label}

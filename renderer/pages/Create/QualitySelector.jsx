@@ -23,7 +23,7 @@ const QUALITIES = [
 export default function QualitySelector({ value, onChange, disabled = false }) {
   return (
     <div>
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Quality</p>
+      <p className="text-[10px] text-fg-dim uppercase tracking-wider mb-2">Quality</p>
       <div className="flex gap-2">
         {QUALITIES.map(({ id, label, hint }) => (
           <button
@@ -33,8 +33,8 @@ export default function QualitySelector({ value, onChange, disabled = false }) {
             title={hint}
             className={`flex-1 py-1.5 rounded-full text-xs font-medium transition-colors ${
               value === id
-                ? 'bg-violet-600 text-white'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                ? 'bg-accent text-white'
+                : 'bg-card text-fg-muted hover:bg-raise hover:text-fg'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
             {label}

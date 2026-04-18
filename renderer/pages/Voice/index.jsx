@@ -339,7 +339,7 @@ export default function VoicePanel() {
       ? 'ring-violet-500 shadow-violet-500/30'
       : isError
         ? 'ring-rose-600 shadow-rose-600/30'
-        : 'ring-zinc-600 hover:ring-violet-500';
+        : 'ring-stroke hover:ring-violet-500';
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -348,25 +348,25 @@ export default function VoicePanel() {
       {/* ── Transcript + Response area ─────────────────────────────────── */}
       <div className="flex flex-col gap-4 w-full max-w-xl flex-1 overflow-y-auto">
         {transcript && (
-          <div className="rounded-xl bg-zinc-800/60 border border-zinc-700/40 px-4 py-3">
-            <p className="text-xs text-zinc-500 mb-1 font-medium uppercase tracking-wide">You said</p>
-            <p className="text-zinc-100 text-sm leading-relaxed">{transcript}</p>
+          <div className="rounded-xl bg-card/60 border border-stroke-dim px-4 py-3">
+            <p className="text-xs text-fg-dim mb-1 font-medium uppercase tracking-wide">You said</p>
+            <p className="text-fg text-sm leading-relaxed">{transcript}</p>
           </div>
         )}
 
         {response && (
-          <div className="rounded-xl bg-violet-950/40 border border-violet-700/30 px-4 py-3">
-            <p className="text-xs text-violet-400 mb-1 font-medium uppercase tracking-wide">
+          <div className="rounded-xl bg-accent/10 border border-accent/20 px-4 py-3">
+            <p className="text-xs text-accent mb-1 font-medium uppercase tracking-wide">
               {phase === PHASE.SPEAKING ? 'Speaking' : 'Response'}
             </p>
-            <p className="text-zinc-100 text-sm leading-relaxed whitespace-pre-wrap">{response}</p>
+            <p className="text-fg text-sm leading-relaxed whitespace-pre-wrap">{response}</p>
           </div>
         )}
 
         {isError && errorMsg && (
           <div className="rounded-xl bg-rose-950/40 border border-rose-700/40 px-4 py-3">
             <p className="text-xs text-rose-400 mb-1 font-medium uppercase tracking-wide">Error</p>
-            <p className="text-zinc-300 text-sm">{errorMsg}</p>
+            <p className="text-fg text-sm">{errorMsg}</p>
           </div>
         )}
       </div>
@@ -383,7 +383,7 @@ export default function VoicePanel() {
           className={[
             'relative w-20 h-20 rounded-full ring-2 shadow-lg transition-all duration-150',
             'flex items-center justify-center',
-            'bg-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed',
+            'bg-panel disabled:opacity-50 disabled:cursor-not-allowed',
             micRingColor,
           ].join(' ')}
         >
@@ -399,7 +399,7 @@ export default function VoicePanel() {
             fill="currentColor"
             className={[
               'w-8 h-8 relative z-10',
-              isRecording ? 'text-red-400' : isBusy ? 'text-violet-400' : 'text-zinc-300',
+              isRecording ? 'text-red-400' : isBusy ? 'text-accent' : 'text-fg',
             ].join(' ')}
           >
             <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4Z" />
@@ -411,14 +411,14 @@ export default function VoicePanel() {
           </svg>
         </button>
 
-        <p className="text-zinc-400 text-sm tabular-nums min-w-[10ch] text-center">
+        <p className="text-fg-muted text-sm tabular-nums min-w-[10ch] text-center">
           {PHASE_LABEL[phase]}
         </p>
 
         {(transcript || response || isError) && phase === PHASE.IDLE && (
           <button
             onClick={handleReset}
-            className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+            className="text-xs text-fg-faint hover:text-fg-muted transition-colors"
           >
             Clear
           </button>

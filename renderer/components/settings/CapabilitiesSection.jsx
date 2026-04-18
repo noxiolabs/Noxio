@@ -171,8 +171,8 @@ export default function CapabilitiesSection() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-white">Capabilities</h2>
-        <p className="mt-1 text-sm text-zinc-500">
+        <h2 className="text-base font-semibold text-fg">Capabilities</h2>
+        <p className="mt-1 text-sm text-fg-dim">
           Manage which AI capabilities are installed on this machine.
         </p>
       </div>
@@ -188,10 +188,10 @@ export default function CapabilitiesSection() {
               key={cap.id}
               className={`flex items-start gap-4 p-4 rounded-lg border ${
                 cap.comingSoon
-                  ? 'border-zinc-800/50 opacity-40'
+                  ? 'border-stroke-dim/50 opacity-40'
                   : installed || justDone
-                  ? 'border-zinc-700/60 bg-zinc-900/40'
-                  : 'border-zinc-800'
+                  ? 'border-stroke/60 bg-panel/40'
+                  : 'border-stroke'
               }`}
             >
               {/* Status icon */}
@@ -208,29 +208,29 @@ export default function CapabilitiesSection() {
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-zinc-100">{cap.label}</p>
+                  <p className="text-sm font-medium text-fg">{cap.label}</p>
                   {cap.comingSoon && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-500 font-medium tracking-wide uppercase">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-card border border-stroke text-fg-dim font-medium tracking-wide uppercase">
                       Coming soon
                     </span>
                   )}
                   {(installed || justDone) && !cap.comingSoon && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-900/40 border border-emerald-700/40 text-emerald-400 font-medium tracking-wide uppercase">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/10 border border-accent/30 text-accent font-medium tracking-wide uppercase">
                       Installed
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-zinc-500 mt-0.5">{cap.description}</p>
+                <p className="text-xs text-fg-dim mt-0.5">{cap.description}</p>
 
                 {/* Model picker — shown for installed chat/coding/image capabilities */}
                 {(installed || justDone) && (cap.id === 'chat' || cap.id === 'coding' || cap.id === 'image') && recs[cap.id] && (
                   <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-zinc-500">Model:</span>
+                    <span className="text-xs text-fg-dim">Model:</span>
                     <select
                       value={selectedModels[cap.id] ?? recs[cap.id].model ?? ''}
                       onChange={(e) => handleModelChange(cap.id, e.target.value)}
                       disabled={modelSaving === cap.id}
-                      className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-violet-500 disabled:opacity-50 max-w-[240px]"
+                      className="bg-panel border border-stroke rounded-md px-2 py-1 text-xs text-fg focus:outline-none focus:border-accent disabled:opacity-50 max-w-[240px]"
                     >
                       {recs[cap.id].model && (
                         <option value={recs[cap.id].model}>
@@ -244,7 +244,7 @@ export default function CapabilitiesSection() {
                       ))}
                     </select>
                     {modelSaving === cap.id && (
-                      <span className="text-xs text-zinc-500">Saving…</span>
+                      <span className="text-xs text-fg-dim">Saving…</span>
                     )}
                     {modelError[cap.id] && (
                       <span className="text-xs text-red-400">{modelError[cap.id]}</span>
@@ -255,13 +255,13 @@ export default function CapabilitiesSection() {
                 {/* Progress bar — shown while installing this capability */}
                 {isActive && (
                   <div className="mt-3 space-y-1.5">
-                    <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
+                    <div className="h-1.5 w-full rounded-full bg-card overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-violet-500 transition-all duration-300"
+                        className="h-full rounded-full bg-accent transition-all duration-300"
                         style={{ width: `${progress}%` }}
                       />
                     </div>
-                    <p className="text-xs text-zinc-500">{stepMsg}</p>
+                    <p className="text-xs text-fg-dim">{stepMsg}</p>
                   </div>
                 )}
 
@@ -276,7 +276,7 @@ export default function CapabilitiesSection() {
                 <button
                   onClick={() => handleAdd(cap)}
                   disabled={!!installing}
-                  className="flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white"
+                  className="flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors bg-accent hover:bg-accent/80 disabled:opacity-40 disabled:cursor-not-allowed text-white"
                 >
                   {isActive ? 'Installing…' : 'Add'}
                 </button>
@@ -298,7 +298,7 @@ export default function CapabilitiesSection() {
 
 function CheckIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
       <polyline points="20 6 9 17 4 12" />
     </svg>
   );
@@ -306,7 +306,7 @@ function CheckIcon() {
 
 function EmptyIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-fg-faint">
       <circle cx="12" cy="12" r="9" />
     </svg>
   );
@@ -314,7 +314,7 @@ function EmptyIcon() {
 
 function ClockIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-600">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-fg-faint">
       <circle cx="12" cy="12" r="9" />
       <polyline points="12 7 12 12 15 15" />
     </svg>

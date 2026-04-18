@@ -28,6 +28,12 @@ const ALL_CAPABILITIES = [
     default: false,
   },
   {
+    id: 'web-search',
+    label: 'Web Search',
+    description: 'Real-time web search via SearXNG. Requires Docker to be installed.',
+    default: false,
+  },
+  {
     id: 'voice',
     label: 'Voice',
     description: 'Speech-to-text (Whisper) and text-to-speech (Kokoro).',

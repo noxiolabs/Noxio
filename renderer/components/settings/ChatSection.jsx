@@ -52,8 +52,8 @@ export default function ChatSection() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-base font-semibold text-white mb-1">Chat Settings</h2>
-        <p className="text-xs text-zinc-500">
+        <h2 className="text-base font-semibold text-fg mb-1">Chat Settings</h2>
+        <p className="text-xs text-fg-dim">
           Configure context window size and an optional system prompt for all conversations.
         </p>
       </div>
@@ -61,8 +61,8 @@ export default function ChatSection() {
       {/* Context window */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-zinc-300">Context window</label>
-          <span className="text-sm font-mono text-violet-400">{ctx.toLocaleString()} tokens</span>
+          <label className="text-sm font-medium text-fg">Context window</label>
+          <span className="text-sm font-mono text-accent">{ctx.toLocaleString()} tokens</span>
         </div>
         <input
           type="range"
@@ -71,9 +71,9 @@ export default function ChatSection() {
           step={STEP_CTX}
           value={ctx}
           onChange={handleCtxChange}
-          className="w-full accent-violet-500"
+          className="w-full accent-accent"
         />
-        <div className="flex justify-between text-xs text-zinc-600">
+        <div className="flex justify-between text-xs text-fg-faint">
           <span>{MIN_CTX.toLocaleString()}</span>
           <span>{MAX_CTX.toLocaleString()}</span>
         </div>
@@ -83,22 +83,22 @@ export default function ChatSection() {
             errors on 16 GB GPUs depending on model size.
           </p>
         )}
-        <p className="text-xs text-zinc-600">
-          Default: 4,096. This value is passed as <code className="text-zinc-400">num_ctx</code> to Ollama.
+        <p className="text-xs text-fg-faint">
+          Default: 4,096. This value is passed as <code className="text-fg-dim">num_ctx</code> to Ollama.
         </p>
       </div>
 
       {/* System prompt */}
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-zinc-300">System prompt</label>
+        <label className="text-sm font-medium text-fg">System prompt</label>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={5}
           placeholder="Leave empty for default behaviour"
-          className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500 resize-none"
+          className="bg-card border border-stroke rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:border-accent resize-none"
         />
-        <p className="text-xs text-zinc-600">
+        <p className="text-xs text-fg-faint">
           Prepended as a system message at the start of every conversation.
         </p>
       </div>
@@ -107,7 +107,7 @@ export default function ChatSection() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+          className="px-4 py-1.5 rounded-lg bg-accent hover:bg-accent/80 disabled:opacity-50 text-white text-sm font-medium transition-colors"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>

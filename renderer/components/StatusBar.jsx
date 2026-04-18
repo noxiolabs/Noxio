@@ -32,7 +32,7 @@ function HealthDot({ name, status }) {
   return (
     <div className="flex items-center gap-1.5" title={title}>
       <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color}`} />
-      <span className="text-zinc-600 text-[10px]">{label}</span>
+      <span className="text-fg-dim text-[10px]">{label}</span>
     </div>
   );
 }
@@ -41,14 +41,14 @@ function HealthDot({ name, status }) {
 function VramMeter({ usedGB, availableGB }) {
   const total = usedGB + availableGB;
   const pct = total > 0 ? Math.round((usedGB / total) * 100) : 0;
-  const color = pct > 90 ? 'bg-red-500' : pct > 70 ? 'bg-yellow-500' : 'bg-violet-500';
+  const color = pct > 90 ? 'bg-red-500' : pct > 70 ? 'bg-yellow-500' : 'bg-accent';
 
   return (
     <div className="flex items-center gap-2">
-      <div className="w-20 h-1 bg-zinc-800 rounded-full overflow-hidden">
+      <div className="w-20 h-1 bg-card rounded-full overflow-hidden">
         <div className={`h-full ${color} rounded-full transition-all duration-1000`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[10px] text-zinc-600 tabular-nums">
+      <span className="text-[10px] text-fg-dim tabular-nums">
         {usedGB.toFixed(1)}/{(total).toFixed(0)} GB
       </span>
     </div>
@@ -77,7 +77,7 @@ export default function StatusBar() {
   );
 
   return (
-    <div className="flex items-center justify-between px-4 h-8 bg-[#0a0a0c] border-t border-zinc-800/60 flex-shrink-0">
+    <div className="flex items-center justify-between px-4 h-8 bg-canvas border-t border-stroke flex-shrink-0">
       {/* Left: service health dots — installed services only */}
       <div className="flex items-center gap-3">
         {visibleServices.map(([name, svc]) => (
@@ -87,7 +87,7 @@ export default function StatusBar() {
 
       {/* Center: active model */}
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-zinc-600 truncate max-w-[200px]">
+        <span className="text-[10px] text-fg-dim truncate max-w-[200px]">
           {model ?? 'No model selected'}
         </span>
       </div>
@@ -97,9 +97,9 @@ export default function StatusBar() {
         {vram.availableGB > 0 ? (
           <VramMeter usedGB={vram.usedGB} availableGB={vram.availableGB} />
         ) : vramTimedOut ? (
-          <span className="text-[10px] text-zinc-700">VRAM N/A</span>
+          <span className="text-[10px] text-fg-dim">VRAM N/A</span>
         ) : (
-          <span className="text-[10px] text-zinc-700 animate-pulse">VRAM checking…</span>
+          <span className="text-[10px] text-fg-faint animate-pulse">VRAM checking…</span>
         )}
       </div>
     </div>

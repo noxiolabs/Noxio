@@ -43,7 +43,7 @@ export default function Sidebar({ activeMode, onModeChange }) {
   }
 
   return (
-    <aside className="flex flex-col w-[60px] bg-[#0a0a0c] border-r border-zinc-800/60 py-3 gap-0.5 flex-shrink-0">
+    <aside className="flex flex-col w-[60px] bg-canvas border-r border-stroke py-3 gap-0.5 flex-shrink-0">
       {MODES.map(({ id, label, Icon, disabled }) => {
         const isDisabledByGameMode = gameModeActive;
         const isDisabled = disabled || isDisabledByGameMode;
@@ -63,12 +63,12 @@ export default function Sidebar({ activeMode, onModeChange }) {
             }
             className={`flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors ${
               isDisabledByGameMode
-                ? 'opacity-20 cursor-not-allowed text-zinc-600'
+                ? 'opacity-20 cursor-not-allowed text-fg-faint'
                 : disabled
-                ? 'opacity-25 cursor-not-allowed text-zinc-500'
+                ? 'opacity-25 cursor-not-allowed text-fg-dim'
                 : activeMode === id
-                ? 'bg-violet-600/20 text-violet-400'
-                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                ? 'bg-accent/15 text-fg'
+                : 'text-fg-dim hover:text-fg hover:bg-card/50'
             }`}
           >
             <Icon />
@@ -83,7 +83,7 @@ export default function Sidebar({ activeMode, onModeChange }) {
       <button
         onClick={handleOpenSettings}
         title="Settings"
-        className="flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
+        className="flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors text-fg-dim hover:text-fg hover:bg-card/50"
       >
         <GearIcon />
         <span className="text-[9px] mt-1 font-medium tracking-wide">Settings</span>
@@ -102,10 +102,10 @@ export default function Sidebar({ activeMode, onModeChange }) {
         }
         className={`flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors ${
           gameToggling
-            ? 'opacity-50 cursor-wait text-zinc-500'
+            ? 'opacity-50 cursor-wait text-fg-dim'
             : gameModeActive
             ? 'bg-green-600/20 text-green-400'
-            : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+            : 'text-fg-dim hover:text-fg hover:bg-card/50'
         }`}
       >
         <GamingIcon />
