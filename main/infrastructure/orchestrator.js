@@ -282,17 +282,19 @@ async function switchMode(targetMode, currentMode, mainWindow) {
  * @param {'photorealistic'|'artistic'|'abstract'|'anime'} style - Style preset
  * @param {'draft'|'standard'|'high'} quality - Quality preset
  * @param {Function} onProgress - Called with percent (0–100) during generation
+ * @param {string|null} [referenceImageData] - Base64 data URL for img2img, or null for txt2img
+ * @param {number} [strength=0.75] - Denoise strength for img2img
  * @returns {Promise<string>} Base64 data URL of the generated image
  * @throws {Error} If ComfyUI fails to start or generation fails
  */
-async function generateImageWithVRAMSwap(prompt, style, quality, onProgress) {
+async function generateImageWithVRAMSwap(prompt, style, quality, onProgress, referenceImageData = null, strength = 0.75) {
   if (_imageGenerating) {
     throw new Error('Image generation already in progress — please wait for the current job to finish');
   }
 
   _imageGenerating = true;
   _abortSignal = { cancelled: false };
-  logger.info(`orchestrator: generateImageWithVRAMSwap — style=${style}, quality=${quality}`);
+  logger.info(`orchestrator: generateImageWithVRAMSwap — style=${style}, quality=${quality}, img2img=${!!referenceImageData}`);
 
   try {
   // Stop Ollama to free VRAM
@@ -312,7 +314,7 @@ async function generateImageWithVRAMSwap(prompt, style, quality, onProgress) {
 
   let imageDataUrl;
   try {
-    imageDataUrl = await comfyui.generateImage({ prompt, style, quality, onProgress, abortSignal: _abortSignal });
+    imageDataUrl = await comfyui.generateImage({ prompt, style, quality, onProgress, abortSignal: _abortSignal, referenceImageData, strength });
   } finally {
     if (_abortSignal.cancelled) {
       // Cancelled by game mode — don't restart services; caller handles service state

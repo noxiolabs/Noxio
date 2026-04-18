@@ -164,25 +164,41 @@ export default function ModelsScreen({
                 {rec.model ? (
                   <div className="flex items-center justify-between gap-3">
                     {hasAlternatives ? (
-                      /* Swap dropdown — shown when alternatives are available */
+                      /* Swap dropdown — grouped by company */
                       <select
                         value={selectedModel}
                         onChange={(e) => handleModelChange(cap, e.target.value)}
                         className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm font-medium rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-violet-600 focus:border-violet-600 truncate"
                         aria-label={`Select model for ${CAP_LABELS[cap] ?? cap}`}
                       >
-                        {/* Recommended model is always first in the list */}
-                        <option value={rec.model}>{rec.model} (recommended)</option>
-                        {rec.alternatives.map((alt) => (
-                          <option key={alt.model} value={alt.model}>
-                            {alt.label || alt.model}{alt.notes ? ` — ${alt.notes}` : ''}
+                        {/* Recommended model — always first, in its own group */}
+                        <optgroup label={rec.company ?? 'Recommended'}>
+                          <option value={rec.model}>
+                            {rec.label || rec.model} — Recommended
                           </option>
+                        </optgroup>
+                        {/* Alternatives grouped by company */}
+                        {Object.entries(
+                          rec.alternatives.reduce((groups, alt) => {
+                            const co = alt.company || 'Other';
+                            if (!groups[co]) groups[co] = [];
+                            groups[co].push(alt);
+                            return groups;
+                          }, {})
+                        ).map(([company, alts]) => (
+                          <optgroup key={company} label={company}>
+                            {alts.map((alt) => (
+                              <option key={alt.model} value={alt.model}>
+                                {alt.label || alt.model}{alt.notes ? ` — ${alt.notes}` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
                       </select>
                     ) : (
                       /* No alternatives available — show static text */
                       <p className="text-sm font-medium text-zinc-100 truncate flex-1 min-w-0">
-                        {selectedModel}
+                        {rec.label || selectedModel}
                       </p>
                     )}
 

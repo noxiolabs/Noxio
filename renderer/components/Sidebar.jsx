@@ -11,10 +11,10 @@ import { useDispatch, useSelector } from 'react-redux';
 import { openSettingsPanel } from '../store/slices/settings';
 
 const MODES = [
-  { id: 'chat',   label: 'Chat',   Icon: ChatIcon   },
-  { id: 'create', label: 'Create', Icon: CreateIcon },
-  { id: 'voice',  label: 'Voice',  Icon: VoiceIcon,  disabled: true },
-  { id: 'agent',  label: 'Agent',  Icon: AgentIcon,  disabled: true },
+  { id: 'chat',   label: 'Chat',   Icon: ChatIcon,   capability: 'chat'  },
+  { id: 'create', label: 'Create', Icon: CreateIcon, capability: 'image' },
+  { id: 'voice',  label: 'Voice',  Icon: VoiceIcon,  capability: 'voice' },
+  { id: 'agent',  label: 'Agent',  Icon: AgentIcon,  alwaysDisabled: true },
 ];
 
 /**
@@ -23,11 +23,12 @@ const MODES = [
 export default function Sidebar({ activeMode, onModeChange }) {
   const dispatch = useDispatch();
   const gameModeActive = useSelector((s) => s.settings.gameModeActive);
+  const selectedCapabilities = useSelector((s) => s.settings.selectedCapabilities);
   const [gameToggling, setGameToggling] = useState(false);
 
   /** Opens the settings overlay on the Models section. */
   function handleOpenSettings() {
-    dispatch(openSettingsPanel('models'));
+    dispatch(openSettingsPanel('capabilities'));
   }
 
   /** Toggles game mode — stops all AI services to free VRAM, or restores them. */
@@ -44,9 +45,10 @@ export default function Sidebar({ activeMode, onModeChange }) {
 
   return (
     <aside className="flex flex-col w-[60px] bg-canvas border-r border-stroke py-3 gap-0.5 flex-shrink-0">
-      {MODES.map(({ id, label, Icon, disabled }) => {
+      {MODES.map(({ id, label, Icon, capability, alwaysDisabled }) => {
         const isDisabledByGameMode = gameModeActive;
-        const isDisabled = disabled || isDisabledByGameMode;
+        const notInstalled = capability && selectedCapabilities?.length > 0 && !selectedCapabilities.includes(capability);
+        const isDisabled = alwaysDisabled || notInstalled || isDisabledByGameMode;
         return (
           <button
             key={id}
@@ -55,16 +57,16 @@ export default function Sidebar({ activeMode, onModeChange }) {
             title={
               isDisabledByGameMode
                 ? 'Game mode active — disable game mode to use AI features'
-                : disabled
-                ? id === 'voice' ? 'Voice — coming in a future release'
-                  : id === 'agent' ? 'Agent — coming in a future release'
-                  : `${label} — coming soon`
+                : alwaysDisabled
+                ? 'Agent — coming in a future release'
+                : notInstalled
+                ? `${label} — not installed (add in Settings → Capabilities)`
                 : label
             }
             className={`flex flex-col items-center justify-center py-3 mx-1.5 rounded-lg transition-colors ${
               isDisabledByGameMode
                 ? 'opacity-20 cursor-not-allowed text-fg-faint'
-                : disabled
+                : isDisabled
                 ? 'opacity-25 cursor-not-allowed text-fg-dim'
                 : activeMode === id
                 ? 'bg-accent/15 text-fg'

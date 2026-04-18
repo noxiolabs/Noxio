@@ -719,8 +719,8 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
    * @param {{ prompt: string, style: string, quality: string }} payload
    * @returns {Promise<{ imagePath: string }|{ error: string }>}
    */
-  ipcMain.handle('generate-image', async (_event, { prompt, style, quality }) => {
-    logger.info(`IPC: generate-image — style: ${style}, quality: ${quality}, prompt: "${prompt?.slice(0, 80)}"`);
+  ipcMain.handle('generate-image', async (_event, { prompt, style, quality, referenceImageData, strength }) => {
+    logger.info(`IPC: generate-image — style: ${style}, quality: ${quality}, img2img: ${!!referenceImageData}, prompt: "${prompt?.slice(0, 80)}"`);
 
     if (!prompt || !prompt.trim()) {
       return { error: 'Prompt is required for image generation' };
@@ -731,6 +731,7 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
 
     const safeStyle = validStyles.includes(style) ? style : 'photorealistic';
     const safeQuality = validQualities.includes(quality) ? quality : 'standard';
+    const safeStrength = typeof strength === 'number' && strength >= 0.1 && strength <= 1.0 ? strength : 0.5;
 
     try {
       const onProgress = (percent) => {
@@ -743,7 +744,9 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
         prompt.trim(),
         safeStyle,
         safeQuality,
-        onProgress
+        onProgress,
+        referenceImageData || null,
+        safeStrength
       );
 
       return { imagePath: imageDataUrl };
@@ -865,6 +868,24 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
     } catch (err) {
       logger.error(`IPC: get-settings failed — ${err.message}\n${err.stack}`);
       return { error: err.message };
+    }
+  });
+
+  /**
+   * Resets all persisted settings and setup state. Equivalent to a fresh install
+   * from the settings UI — the setup wizard will show on next launch.
+   */
+  ipcMain.handle('reset-setup', () => {
+    try {
+      logger.info('IPC: reset-setup — clearing store and reloading');
+      store.clear();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.reload();
+      }
+      return { success: true };
+    } catch (err) {
+      logger.error(`IPC: reset-setup failed — ${err.message}\n${err.stack}`);
+      return { success: false, error: err.message };
     }
   });
 

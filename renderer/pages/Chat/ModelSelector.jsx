@@ -30,6 +30,7 @@ export default function ModelSelector({ conversationId }) {
       // Auto-select first model if none is already set
       if (!selectedModel) {
         dispatch(setSelectedModel(list[0].name));
+        window.electronAPI?.setDefaultModel('chat', list[0].name);
       }
     }
   }
@@ -59,6 +60,7 @@ export default function ModelSelector({ conversationId }) {
 
   function select(name) {
     dispatch(setSelectedModel(name));
+    window.electronAPI?.setDefaultModel('chat', name);
     setOpen(false);
   }
 

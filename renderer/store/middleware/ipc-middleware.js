@@ -17,7 +17,7 @@ import {
   setCurrentMode,
   setLastRouting,
 } from '../slices/infrastructure';
-import { appendStreamToken, appendThinkingToken, finaliseStream, hydrateConversations } from '../slices/chat';
+import { appendStreamToken, appendThinkingToken, finaliseStream, hydrateConversations, setSelectedModel } from '../slices/chat';
 import { setManifest } from '../slices/manifest';
 import { setPullProgress, clearPullProgress, hydrateSettings, updateChatSettings, updateVoiceSettings, updateUI, setGameMode } from '../slices/settings';
 
@@ -150,6 +150,9 @@ export function setupIpcListeners(store) {
   api.getSettings().then((data) => {
     if (data && typeof data === 'object' && !data.error) {
       store.dispatch(hydrateSettings(data));
+      if (data.models?.chat) {
+        store.dispatch(setSelectedModel(data.models.chat));
+      }
     }
   }).catch(() => {
     // Non-fatal — defaults are already in initialState

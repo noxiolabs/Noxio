@@ -33,6 +33,8 @@ export default function CreatePanel() {
   const [currentImage, setCurrentImage] = useState(null);
   const [gallery, setGallery]         = useState([]);
   const [error, setError]             = useState('');
+  const [referenceImage, setReferenceImage] = useState(null); // { dataUrl, name }
+  const [strength, setStrength]       = useState(0.5);
 
   /** Ref to the progress listener so we can remove it on unmount */
   const progressListenerRef = useRef(null);
@@ -66,7 +68,7 @@ export default function CreatePanel() {
 
     try {
       const result = window.electronAPI
-        ? await window.electronAPI.generateImage(trimmedPrompt, style, quality)
+        ? await window.electronAPI.generateImage(trimmedPrompt, style, quality, referenceImage?.dataUrl ?? null, strength)
         : { error: 'electronAPI not available' };
 
       if (result?.error) {
@@ -98,6 +100,23 @@ export default function CreatePanel() {
 
   function handleSelectImage(image) {
     setCurrentImage(image);
+  }
+
+  function loadReferenceFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => setReferenceImage({ dataUrl: e.target.result, name: file.name });
+    reader.readAsDataURL(file);
+  }
+
+  function handleReferenceInputChange(e) {
+    loadReferenceFile(e.target.files[0]);
+    e.target.value = '';
+  }
+
+  function handleReferenceDrop(e) {
+    e.preventDefault();
+    loadReferenceFile(e.dataTransfer.files[0]);
   }
 
   if (comfyuiStatus === 'not-installed') {
@@ -132,6 +151,18 @@ export default function CreatePanel() {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGenerate();
             }}
           />
+        </div>
+
+        {/* Reference image (img2img) — disabled until FLUX.2 Klein support lands in v0.2 */}
+        <div className="select-none">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-fg-dim uppercase tracking-wider">Reference Image</p>
+            <span className="text-[9px] text-accent bg-accent/10 border border-accent/30 rounded px-1.5 py-0.5">Coming in v0.2</span>
+          </div>
+          <div className="opacity-50 pointer-events-none flex flex-col items-center justify-center gap-1.5 w-full h-20 border border-dashed border-stroke rounded-lg">
+            <UploadIcon />
+            <span className="text-[10px] text-fg-faint">Click or drop an image</span>
+          </div>
         </div>
 
         {/* Style selector */}
@@ -192,17 +223,18 @@ export default function CreatePanel() {
 
 function SpinnerIcon() {
   return (
-    <svg
-      className="animate-spin"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-    >
+    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-fg-faint">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   );
 }

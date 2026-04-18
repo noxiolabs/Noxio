@@ -35,6 +35,91 @@ const MAX_POLL_ATTEMPTS = 300;
 // ─── Workflow Templates ────────────────────────────────────────────────────────
 
 /**
+ * Uploads an image buffer to ComfyUI's input folder via /upload/image.
+ * @param {Buffer} imageBuffer - Raw image bytes
+ * @param {string} mimeType - MIME type e.g. 'image/png'
+ * @param {string} filename - Filename to use in the upload
+ * @returns {Promise<string>} The filename ComfyUI assigned in its input folder
+ */
+function uploadImage(imageBuffer, mimeType, filename) {
+  return new Promise((resolve, reject) => {
+    const boundary = `----NoxioFormBoundary${Date.now()}`;
+    const prefix = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`
+    );
+    const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
+    const body = Buffer.concat([prefix, imageBuffer, suffix]);
+
+    const options = {
+      hostname: '127.0.0.1',
+      port: 8188,
+      path: '/upload/image',
+      method: 'POST',
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': body.length,
+      },
+      timeout: 15000,
+    };
+
+    const req = http.request(options, (res) => {
+      let responseBody = '';
+      res.on('data', (chunk) => { responseBody += chunk; });
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(responseBody);
+          resolve(result.name);
+        } catch (err) {
+          reject(new Error(`ComfyUI upload parse error: ${err.message}`));
+        }
+      });
+    });
+
+    req.on('error', (err) => reject(new Error(`ComfyUI /upload/image: ${err.message}`)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('ComfyUI /upload/image timed out')); });
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Builds a FLUX.1-schnell img2img workflow using an already-uploaded reference image.
+ * Swaps EmptyLatentImage for LoadImage → VAEEncode with denoise < 1.0.
+ *
+ * @param {string} prompt - Positive text prompt
+ * @param {number} steps - Inference steps
+ * @param {string} uploadedFilename - Filename returned by /upload/image
+ * @param {number} strength - Denoise strength 0.1–1.0 (higher = more prompt, less reference)
+ * @returns {Object} ComfyUI workflow object
+ */
+function buildImg2ImgFluxWorkflow(prompt, steps, uploadedFilename, strength) {
+  return {
+    '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'flux1-schnell-fp8.safetensors' } },
+    '2': { class_type: 'CLIPTextEncode', inputs: { text: prompt, clip: ['1', 1] } },
+    '3': { class_type: 'CLIPTextEncode', inputs: { text: '', clip: ['1', 1] } },
+    '4': { class_type: 'LoadImage', inputs: { image: uploadedFilename, upload: 'image' } },
+    '5': { class_type: 'VAEEncode', inputs: { pixels: ['4', 0], vae: ['1', 2] } },
+    '6': {
+      class_type: 'KSampler',
+      inputs: {
+        model: ['1', 0],
+        positive: ['2', 0],
+        negative: ['3', 0],
+        latent_image: ['5', 0],
+        seed: Math.floor(Math.random() * 2 ** 32),
+        steps,
+        cfg: 1.0,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        denoise: strength,
+      },
+    },
+    '7': { class_type: 'VAEDecode', inputs: { samples: ['6', 0], vae: ['1', 2] } },
+    '8': { class_type: 'SaveImage', inputs: { images: ['7', 0], filename_prefix: 'noxio' } },
+  };
+}
+
+/**
  * Returns a FLUX.1-schnell-fp8 workflow JSON object.
  * Used for photorealistic and artistic styles on 10–18GB VRAM tiers.
  *
@@ -167,32 +252,38 @@ function buildSdxlWorkflow(prompt, steps, anime) {
  * @param {string} prompt
  * @param {'photorealistic'|'artistic'|'abstract'|'anime'} style
  * @param {'draft'|'standard'|'high'} quality
+ * @param {string|null} referenceImageFilename - Filename from /upload/image, or null for txt2img
+ * @param {number} strength - Denoise strength for img2img (ignored when no reference)
  * @returns {Object} ComfyUI workflow JSON object
  */
-function buildWorkflow(prompt, style, quality) {
+function buildWorkflow(prompt, style, quality, referenceImageFilename = null, strength = 0.5) {
   const stepsMap = { draft: 4, standard: 8, high: 20 };
-  const steps = stepsMap[quality] ?? 8;
+  // FLUX-schnell is a distilled model — img2img needs at least 20 steps to
+  // preserve structure from the reference, so we ignore the quality preset here.
+  const steps = referenceImageFilename ? 20 : (stepsMap[quality] ?? 8);
+
+  const stylePrefix = {
+    photorealistic: '',
+    artistic: 'artistic interpretation, painterly, ',
+    abstract: 'abstract art, surreal, geometric shapes, bold colors, ',
+    anime: 'anime style, vibrant colors, detailed linework, ',
+  }[style] || '';
+
+  const styledPrompt = `${stylePrefix}${prompt}`;
+
+  if (referenceImageFilename) {
+    return buildImg2ImgFluxWorkflow(styledPrompt, steps, referenceImageFilename, strength);
+  }
 
   switch (style) {
     case 'photorealistic':
       return buildFluxWorkflow(prompt, steps);
     case 'artistic':
-      return buildFluxWorkflow(
-        `artistic interpretation, painterly, ${prompt}`,
-        steps
-      );
+      return buildFluxWorkflow(`artistic interpretation, painterly, ${prompt}`, steps);
     case 'abstract':
-      // SDXL not installed — route through FLUX with style-weighted prompt
-      return buildFluxWorkflow(
-        `abstract art, surreal, geometric shapes, bold colors, ${prompt}`,
-        steps
-      );
+      return buildFluxWorkflow(`abstract art, surreal, geometric shapes, bold colors, ${prompt}`, steps);
     case 'anime':
-      // SDXL not installed — route through FLUX with anime prompt modifier
-      return buildFluxWorkflow(
-        `anime style, vibrant colors, detailed linework, ${prompt}`,
-        steps
-      );
+      return buildFluxWorkflow(`anime style, vibrant colors, detailed linework, ${prompt}`, steps);
     default:
       return buildFluxWorkflow(prompt, steps);
   }
@@ -359,11 +450,13 @@ async function stop() {
  * @param {'photorealistic'|'artistic'|'abstract'|'anime'} params.style - Visual style preset
  * @param {'draft'|'standard'|'high'} params.quality - Quality/steps preset
  * @param {Function} params.onProgress - Callback invoked with percent (0–100)
+ * @param {string|null} [params.referenceImageData] - Base64 data URL of reference image for img2img
+ * @param {number} [params.strength=0.75] - Denoise strength for img2img (0.1 subtle → 1.0 ignore reference)
  * @returns {Promise<string>} Base64 data URL of the generated image (e.g. 'data:image/png;base64,...')
  * @throws {Error} If ComfyUI is unreachable, the job fails, or the image cannot be fetched
  */
-async function generateImage({ prompt, style, quality, onProgress, abortSignal }) {
-  logger.info(`comfyui: generateImage — style=${style}, quality=${quality}`);
+async function generateImage({ prompt, style, quality, onProgress, abortSignal, referenceImageData = null, strength = 0.5 }) {
+  logger.info(`comfyui: generateImage — style=${style}, quality=${quality}, img2img=${!!referenceImageData}`);
 
   // Verify ComfyUI is reachable before submitting
   const running = await checkRunning();
@@ -373,8 +466,24 @@ async function generateImage({ prompt, style, quality, onProgress, abortSignal }
 
   onProgress(5);
 
+  // Upload reference image to ComfyUI's input folder if provided
+  let referenceImageFilename = null;
+  if (referenceImageData) {
+    const mimeMatch = referenceImageData.match(/^data:(image\/[a-z+]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+    const ext = mimeType.split('/')[1] === 'jpeg' ? 'jpg' : mimeType.split('/')[1];
+    const base64Data = referenceImageData.replace(/^data:image\/[a-z+]+;base64,/, '');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+    logger.info(`comfyui: uploading reference image (${imageBuffer.length} bytes)`);
+    referenceImageFilename = await uploadImage(imageBuffer, mimeType, `noxio-ref.${ext}`);
+    logger.info(`comfyui: reference image uploaded as ${referenceImageFilename}`);
+    onProgress(12);
+  } else {
+    onProgress(15);
+  }
+
   // Build the workflow and submit it
-  const workflow = buildWorkflow(prompt, style, quality);
+  const workflow = buildWorkflow(prompt, style, quality, referenceImageFilename, strength);
   logger.info('comfyui: submitting workflow to /prompt');
 
   const submitResult = await comfyPost('/prompt', { prompt: workflow });

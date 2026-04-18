@@ -7,6 +7,7 @@
   "license": "AGPL-3.0",
   "scripts": {
     "dev": "concurrently -n VITE,ELECTRON -c cyan,yellow \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "dev:reset": "concurrently -n VITE,ELECTRON -c cyan,yellow \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron . --reset-setup\"",
     "build": "vite build",
     "package": "npm run build && electron-builder",
     "lint": "eslint . --ext .js,.jsx --ignore-path .eslintignore",

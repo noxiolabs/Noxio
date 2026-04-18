@@ -23,7 +23,6 @@ const SERVICES = [
 export default function SystemSection() {
   const selectedCapabilities = useSelector((s) => s.settings.selectedCapabilities);
   const hasWebSearch = selectedCapabilities?.includes('web-search');
-
   /** @type {[Record<string, {currentVersion:string|null,latestVersion:string|null,updateAvailable:boolean}>, Function]} */
   const [versions,   setVersions]   = useState({});
   const [checking,   setChecking]   = useState(false);
@@ -317,6 +316,7 @@ export default function SystemSection() {
           );
         })}
       </div>
+
     </div>
   );
 }

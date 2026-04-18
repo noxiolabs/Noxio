@@ -57,8 +57,10 @@ function readFile(file) {
  * }} props
  */
 export default function ChatInput({ value, onChange, onSend, onStop, droppedFiles, dropTick, searching = false }) {
-  const streaming     = useSelector((s) => s.chat.streaming);
-  const selectedModel = useSelector((s) => s.chat.selectedModel);
+  const streaming            = useSelector((s) => s.chat.streaming);
+  const selectedModel        = useSelector((s) => s.chat.selectedModel);
+  const selectedCapabilities = useSelector((s) => s.settings.selectedCapabilities);
+  const hasWebSearch         = selectedCapabilities?.includes('web-search');
   const textareaRef   = useRef(null);
   const fileInputRef  = useRef(null);
   const prevStreamingRef = useRef(false);
@@ -201,8 +203,8 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
             onChange={handleFileInput}
           />
 
-          {/* Web search toggle */}
-          <div className="relative flex-shrink-0">
+          {/* Web search toggle — only shown when web-search capability is installed */}
+          {hasWebSearch && <div className="relative flex-shrink-0">
             <button
               onClick={() => setWebSearchEnabled((v) => !v)}
               disabled={streaming}
@@ -228,7 +230,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
             {searxngAvailable === false && !webSearchEnabled && (
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500/80" />
             )}
-          </div>
+          </div>}
 
           <textarea
             ref={textareaRef}

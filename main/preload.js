@@ -277,8 +277,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @param {string} quality
    * @returns {Promise<void>}
    */
-  generateImage: (prompt, style, quality) =>
-    ipcRenderer.invoke('generate-image', { prompt, style, quality }),
+  generateImage: (prompt, style, quality, referenceImageData = null, strength = 0.75) =>
+    ipcRenderer.invoke('generate-image', { prompt, style, quality, referenceImageData, strength }),
 
   /**
    * Signals the main process that recording has started.
@@ -344,6 +344,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<Object|null>} The updated manifest object
    */
   verifyInstallManifest: () => ipcRenderer.invoke('verify-install-manifest'),
+
+  /**
+   * Clears all persisted settings and reloads the app, returning to the setup wizard.
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  resetSetup: () => ipcRenderer.invoke('reset-setup'),
 
   // ─── Main → Renderer (event subscriptions) ──────────────────────────────
 
