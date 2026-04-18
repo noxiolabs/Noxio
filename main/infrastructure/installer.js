@@ -18,6 +18,9 @@
 
 'use strict';
 
+const { execFile, spawn } = require('child_process');
+const fs   = require('fs');
+const path = require('path');
 const logger = require('../utils/logger');
 const { downloadModel } = require('../wizard/model-downloader');
 const { isOllamaInstalled, installOllama } = require('../wizard/ollama-installer');
@@ -50,6 +53,7 @@ const STEP_WEIGHTS = {
   'download-flux':        20,
   'download-whisper-model': 8,
   'download-kokoro-model':  3,
+  'install-searxng':        3,
   // LLM models: 20 points each (applied per capability)
 };
 const LLM_WEIGHT_PER_MODEL = 20;
@@ -175,8 +179,9 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
   // Persist the chosen install directory immediately so it survives a crash/retry
   store.set('settings.installDir', installDir);
 
-  const hasImage = capabilities.includes('image');
-  const hasVoice = capabilities.includes('voice');
+  const hasImage     = capabilities.includes('image');
+  const hasVoice     = capabilities.includes('voice');
+  const hasWebSearch = capabilities.includes('web-search');
   const llmCaps  = ['chat', 'coding'].filter((c) => capabilities.includes(c) && models[c]);
 
   // ── Build ordered list of active steps ──────────────────────────────────
@@ -185,6 +190,7 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
 
   activeSteps.push('install-ollama');
   activeSteps.push('verify-python');
+  if (hasWebSearch) activeSteps.push('install-searxng');
   if (hasImage) activeSteps.push('install-comfyui');
   if (hasImage) activeSteps.push('upgrade-torch-blackwell');
   if (hasVoice) activeSteps.push('install-whisper');
@@ -300,6 +306,118 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
         `Python installation failed: ${err.message}`,
         true
       );
+      return { success: false };
+    }
+  }
+
+  // ── Step: install-searxng ────────────────────────────────────────────────
+  if (hasWebSearch) {
+    const stepName = 'install-searxng';
+    const { start, end } = ranges[stepName];
+
+    try {
+      emitProgress(win, stepName, start, 'Checking Docker...');
+
+      /** Run a docker command; converts daemon-not-running pipe errors into readable messages. */
+      function dockerExec(args, opts = {}) {
+        return new Promise((resolve, reject) => {
+          execFile('docker', args, opts, (err, stdout, stderr) => {
+            if (!err) { resolve(stdout); return; }
+            const raw = (err.message + (stderr ?? '')).toLowerCase();
+            if (raw.includes('pipe') || raw.includes('daemon') || raw.includes('connect') || raw.includes('linux engine')) {
+              reject(Object.assign(new Error('daemon-not-running'), { daemonDown: true }));
+            } else {
+              reject(new Error(err.message.split('\n')[0]));
+            }
+          });
+        });
+      }
+
+      /** Wait for Docker daemon to become responsive, polling every 3 s up to maxMs. */
+      async function waitForDaemon(maxMs = 60_000) {
+        const deadline = Date.now() + maxMs;
+        while (Date.now() < deadline) {
+          try {
+            await new Promise((res, rej) =>
+              execFile('docker', ['info'], { timeout: 5_000 }, (e) => e ? rej(e) : res())
+            );
+            return; // daemon is up
+          } catch (_) {
+            await new Promise((r) => setTimeout(r, 3_000));
+          }
+        }
+        throw new Error('Docker Desktop did not start within 60 seconds. Please start it manually and retry.');
+      }
+
+      // 1. Verify Docker CLI is installed
+      let versionOut;
+      try {
+        versionOut = await dockerExec(['--version'], { timeout: 10_000 });
+      } catch (_) {
+        throw new Error('Docker is not installed or not in PATH. Please install Docker Desktop first.');
+      }
+      logger.info(`installer: Docker found — ${versionOut.trim()}`);
+
+      // 2. Check if daemon is running; if not, try to auto-start Docker Desktop
+      emitProgress(win, stepName, start, 'Starting Docker daemon...');
+      const daemonRunning = await new Promise((res) =>
+        execFile('docker', ['info'], { timeout: 5_000 }, (e) => res(!e))
+      );
+
+      if (!daemonRunning) {
+        logger.info('installer: Docker daemon not running — attempting to auto-start Docker Desktop');
+        emitProgress(win, stepName, start, 'Starting Docker Desktop (this may take a moment)...');
+
+        const desktopPaths = [
+          path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Docker', 'Docker', 'Docker Desktop.exe'),
+          path.join(process.env['LOCALAPPDATA'] || '', 'Programs', 'Docker', 'Docker Desktop.exe'),
+        ];
+        const desktopExe = desktopPaths.find((p) => fs.existsSync(p));
+        if (desktopExe) {
+          spawn(desktopExe, [], { detached: true, stdio: 'ignore' }).unref();
+        }
+        await waitForDaemon(60_000); // throws if still down after 60 s
+        logger.info('installer: Docker daemon ready');
+      }
+
+      // 3. Write a settings.yml that enables the JSON search format
+      const searxngConfigDir = path.join(installDir, 'searxng');
+      fs.mkdirSync(searxngConfigDir, { recursive: true });
+      const settingsYml = path.join(searxngConfigDir, 'settings.yml');
+      fs.writeFileSync(settingsYml,
+        'use_default_settings: true\n\nsearch:\n  formats:\n    - html\n    - json\n',
+        'utf8'
+      );
+      logger.info(`installer: wrote SearXNG settings.yml to ${settingsYml}`);
+
+      // 4. Remove any existing container so the volume mount is applied cleanly
+      const psOut = await dockerExec(['ps', '-a', '--filter', 'name=noxio-searxng', '--format', '{{.Names}}'], { timeout: 10_000 });
+      const containerExists = psOut.trim() === 'noxio-searxng';
+
+      if (containerExists) {
+        logger.info('installer: removing existing noxio-searxng container to apply settings');
+        emitProgress(win, stepName, start + 1, 'Removing old SearXNG container...');
+        await dockerExec(['rm', '-f', 'noxio-searxng'], { timeout: 15_000 });
+      } else {
+        emitProgress(win, stepName, start + 1, 'Pulling SearXNG image...');
+        await dockerExec(['pull', 'searxng/searxng'], { timeout: 300_000 });
+      }
+
+      emitProgress(win, stepName, start + 2, 'Starting SearXNG container...');
+      await dockerExec([
+        'run', '-d',
+        '--name', 'noxio-searxng',
+        '-p', '8080:8080',
+        '--restart', 'unless-stopped',
+        '-v', `${searxngConfigDir}:/etc/searxng`,
+        'searxng/searxng',
+      ], { timeout: 30_000 });
+
+      emitProgress(win, stepName, end, 'SearXNG running on port 8080 ✓');
+      manifest.markServiceInstalled(store, 'searxng', null);
+    } catch (err) {
+      logger.error(`installer: install-searxng failed — ${err.message}`);
+      emitError(win, stepName, err.message, true);
       return { success: false };
     }
   }

@@ -150,7 +150,7 @@ No work on Phase 7 until the owner decides the integration strategy.
 
 ### Phase 8 — Polish + Launch (Weeks 15–16)
 
-- [ ] Gaming mode: `switch-mode` to gaming → pauses all AI services, releases VRAM
+- [x] Gaming mode: `switch-mode` to gaming → pauses all AI services, releases VRAM
 - [ ] System tray icon: show/hide window, quick mode switch, quit
 - [ ] Windows .exe installer via electron-builder
 - [ ] README status table fully up to date

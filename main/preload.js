@@ -245,11 +245,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
   extractPdfText: (buffer) => ipcRenderer.invoke('extract-pdf-text', { buffer }),
 
   /**
-   * Searches DuckDuckGo for the given query and returns instant answer results.
+   * Searches via local SearXNG at localhost:8080 and returns up to 5 results.
    * @param {string} query
-   * @returns {Promise<{ abstract: Object|null, results: Array }|{ error: string }>}
+   * @returns {Promise<{ results: Array }|{ error: string }>}
    */
   searchWeb: (query) => ipcRenderer.invoke('search-web', { query }),
+
+  /**
+   * Checks whether the local SearXNG Docker container is running.
+   * @returns {Promise<{ running: boolean }>}
+   */
+  checkSearxngHealth: () => ipcRenderer.invoke('check-searxng-health'),
+
+  /**
+   * Starts the SearXNG Docker container.
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  startSearxng: () => ipcRenderer.invoke('start-searxng'),
+
+  /**
+   * Pulls the latest SearXNG image and restarts the container.
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  updateSearxng: () => ipcRenderer.invoke('update-searxng'),
 
   /**
    * Starts image generation. Progress arrives via 'install-progress' events,
