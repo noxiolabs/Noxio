@@ -185,6 +185,9 @@ export function setupIpcListeners(store) {
       if (settings.voice) {
         api.saveVoiceSettings(settings.voice.sttLanguage, settings.voice.ttsVoice).catch(() => {});
       }
+      if (settings.ui) {
+        api.saveUiSettings(settings.ui.theme, settings.ui.fontSize).catch(() => {});
+      }
     }, 500);
   });
 }

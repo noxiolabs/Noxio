@@ -74,10 +74,14 @@ const initialState = {
    * Chat panel settings.
    * contextWindow: Ollama num_ctx value sent with each request.
    * systemPrompt: Optional system message prepended to every conversation.
+   * provider: 'ollama' for local Ollama, 'custom' for any OpenAI-compatible endpoint.
+   * customEndpoint: Base URL for the custom provider (e.g. LM Studio at localhost:1234).
    */
   chat: {
     contextWindow: 4096,
     systemPrompt: '',
+    provider: 'ollama',
+    customEndpoint: 'http://localhost:1234',
   },
 
   /**
@@ -86,6 +90,9 @@ const initialState = {
    * NOT persisted — resets to false on restart (services restart on next launch).
    */
   gameModeActive: false,
+
+  /** HuggingFace access token for downloading gated models (e.g. FLUX.2 Klein). */
+  hfToken: '',
 
   /**
    * Transient settings panel UI state. NOT persisted to disk.
@@ -255,7 +262,16 @@ const settingsSlice = createSlice({
       if (loaded.ui) Object.assign(state.ui, loaded.ui);
       if (loaded.voice) Object.assign(state.voice, loaded.voice);
       if (loaded.chat) Object.assign(state.chat, loaded.chat);
+      if (loaded.hfToken !== undefined) state.hfToken = loaded.hfToken ?? '';
       if (loaded.setupComplete !== undefined) state.setupComplete = loaded.setupComplete;
+    },
+
+    /**
+     * Updates the stored HuggingFace access token.
+     * @param {Object} action.payload - Token string (empty string to clear)
+     */
+    setHfToken(state, action) {
+      state.hfToken = typeof action.payload === 'string' ? action.payload : '';
     },
 
   },
@@ -277,6 +293,7 @@ export const {
   clearPullProgress,
   hydrateSettings,
   setGameMode,
+  setHfToken,
 } = settingsSlice.actions;
 
 export default settingsSlice.reducer;

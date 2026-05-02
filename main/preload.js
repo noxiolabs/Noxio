@@ -32,12 +32,14 @@ const VALID_RECEIVE_CHANNELS = [
   'model-pull-complete',      // { model: string }
   'model-pull-error',         // { model: string, error: string }
   'stream-thinking',          // token: string — reasoning tokens from think-capable models
+  'stream-error',             // error: string — fatal error from Ollama (model load failure, etc.)
   'routing-decision',         // { provider: string, model: string, conversationId: string, fallbackReason?: string }
   'open-settings',            // { section: string } — opens settings overlay from main process or external trigger
   'game-mode-changed',        // boolean — true when game mode activates, false when it deactivates
-  'service-update-progress',  // { service: string, percent: number, message: string }
-  'service-update-complete',  // { service: string }
-  'service-update-error',     // { service: string, error: string }
+  'service-update-progress',          // { service: string, percent: number, message: string }
+  'service-update-complete',          // { service: string }
+  'service-update-error',             // { service: string, error: string }
+  'image-model-reinstall-progress',   // { percent: number, message: string }
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -197,10 +199,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * Persists chat settings. contextWindow must be 512–32768.
    * @param {number} contextWindow
    * @param {string} systemPrompt
+   * @param {'ollama'|'custom'} [provider]
+   * @param {string} [customEndpoint]
    * @returns {Promise<{success: boolean, error?: string}>}
    */
-  saveChatSettings: (contextWindow, systemPrompt) =>
-    ipcRenderer.invoke('save-chat-settings', { contextWindow, systemPrompt }),
+  saveChatSettings: (contextWindow, systemPrompt, provider, customEndpoint) =>
+    ipcRenderer.invoke('save-chat-settings', { contextWindow, systemPrompt, provider, customEndpoint }),
+
+  /**
+   * Persists a HuggingFace access token for downloading gated models.
+   * @param {string} token - HF token (empty string to clear)
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  saveHfToken: (token) =>
+    ipcRenderer.invoke('save-hf-token', { token }),
+
+  /**
+   * Re-downloads the currently installed image model and all companion files.
+   * Progress arrives via 'image-model-reinstall-progress' events: { percent, message }.
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  reinstallImageModel: () => ipcRenderer.invoke('reinstall-image-model'),
+
+  /**
+   * Persists UI appearance settings (theme, fontSize).
+   * @param {string} theme
+   * @param {string} fontSize
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  saveUiSettings: (theme, fontSize) =>
+    ipcRenderer.invoke('save-ui-settings', { theme, fontSize }),
 
   /**
    * Persists chat conversation history to electron-store.

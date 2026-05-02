@@ -191,59 +191,167 @@ async function ensureRunning(configDir) {
     : { ok: false, error: 'SearXNG is starting but not yet ready — try again in a moment' };
 }
 
+/** Strip HTML tags and decode common entities. */
+function stripHtml(s) {
+  return s
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
 /**
- * Searches via local SearXNG and returns up to 5 results.
- * Automatically starts or creates the Docker container if it is not running.
- *
+ * Queries SearXNG directly. Assumes it is already running — does NOT start it.
  * @param {string} query
- * @param {string|null} [configDir] - Install directory (used if container needs to be created)
- * @returns {Promise<{
- *   results: Array<{ title: string, snippet: string, url: string }>,
- * } | { error: string }>}
+ * @returns {Promise<Array<{ title: string, snippet: string, url: string }>>}
  */
-async function search(query, configDir) {
-  if (typeof query !== 'string' || !query.trim()) {
-    return { error: 'query required' };
-  }
-
-  const { ok, error: startError } = await ensureRunning(configDir ?? null);
-  if (!ok) return { error: startError ?? 'SearXNG is not running' };
-
+async function searchSearXNG(query) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
   try {
     const url = new URL(SEARXNG_URL);
-    url.searchParams.set('q', query.trim());
+    url.searchParams.set('q', query);
     url.searchParams.set('format', 'json');
     url.searchParams.set('language', 'en');
-
     const response = await fetch(url.toString(), {
       signal: controller.signal,
       headers: SEARXNG_HEADERS,
     });
-
-    if (!response.ok) {
-      return { error: `HTTP ${response.status}` };
-    }
-
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-
-    const results = (data.results ?? []).slice(0, 5).map((item) => ({
+    return (data.results ?? []).slice(0, 5).map((item) => ({
       title: item.title ?? '',
       snippet: item.content ?? '',
       url: item.url ?? '',
     }));
-
-    return { results };
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      return { error: 'Search timed out — SearXNG may still be starting' };
-    }
-    return { error: err.message ?? 'search failed' };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Scrapes DuckDuckGo HTML results. No API key or Docker required.
+ * @param {string} query
+ * @returns {Promise<Array<{ title: string, snippet: string, url: string }>>}
+ */
+async function searchDDG(query) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const resp = await fetch('https://html.duckduckgo.com/html/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      },
+      body: new URLSearchParams({ q: query }).toString(),
+      signal: controller.signal,
+    });
+    const html = await resp.text();
+
+    const results = [];
+    const titleRe = /class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
+    const snippetRe = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+
+    const titles = [];
+    const urls = [];
+    let m;
+
+    while ((m = titleRe.exec(html)) !== null && titles.length < 5) {
+      const rawHref = m[1];
+      const title = stripHtml(m[2]);
+      // DDG wraps URLs — extract uddg param if present
+      const uddg = new URLSearchParams(rawHref.includes('?') ? rawHref.split('?')[1] : '').get('uddg');
+      urls.push(uddg ? decodeURIComponent(uddg) : rawHref);
+      titles.push(title);
+    }
+
+    const snippets = [];
+    while ((m = snippetRe.exec(html)) !== null && snippets.length < 5) {
+      snippets.push(stripHtml(m[1]));
+    }
+
+    for (let i = 0; i < titles.length; i++) {
+      if (!urls[i]) continue;
+      results.push({ title: titles[i], url: urls[i], snippet: snippets[i] ?? '' });
+    }
+
+    if (results.length === 0) throw new Error('no results');
+    return results;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Falls back to the Wikipedia search API. Always available, no auth required.
+ * @param {string} query
+ * @returns {Promise<Array<{ title: string, snippet: string, url: string }>>}
+ */
+async function searchWikipedia(query) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`;
+    const resp = await fetch(url, { signal: controller.signal });
+    const data = await resp.json();
+    const hits = data?.query?.search ?? [];
+    if (hits.length === 0) throw new Error('no results');
+    return hits.map((h) => ({
+      title: h.title ?? '',
+      url: `https://en.wikipedia.org/wiki/${encodeURIComponent(h.title ?? '')}`,
+      snippet: stripHtml(h.snippet ?? ''),
+    }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Searches the web using a tiered fallback:
+ *   1. SearXNG (if already running — no container startup wait)
+ *   2. DuckDuckGo HTML scraping (no Docker, no API key)
+ *   3. Wikipedia API (last resort)
+ *
+ * @param {string} query
+ * @param {string|null} [_configDir] - Unused; kept for API compatibility
+ * @returns {Promise<{
+ *   results: Array<{ title: string, snippet: string, url: string }>,
+ *   source: 'searxng' | 'ddg' | 'wikipedia',
+ * } | { error: string }>}
+ */
+async function search(query, _configDir) {
+  if (typeof query !== 'string' || !query.trim()) {
+    return { error: 'query required' };
+  }
+  const q = query.trim();
+
+  // Tier 1: SearXNG — only if already running, no blocking startup wait
+  const { running } = await checkHealth();
+  if (running) {
+    try {
+      const results = await searchSearXNG(q);
+      if (results.length > 0) return { results, source: 'searxng' };
+    } catch (_) { /* fall through */ }
+  }
+
+  // Tier 2: DuckDuckGo HTML scraping
+  try {
+    const results = await searchDDG(q);
+    return { results, source: 'ddg' };
+  } catch (_) { /* fall through */ }
+
+  // Tier 3: Wikipedia
+  try {
+    const results = await searchWikipedia(q);
+    return { results, source: 'wikipedia' };
+  } catch (_) { /* fall through */ }
+
+  return { error: 'All search methods failed' };
 }
 
 module.exports = { search, checkHealth, ensureRunning };

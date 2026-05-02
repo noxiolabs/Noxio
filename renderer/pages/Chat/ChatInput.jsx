@@ -282,7 +282,7 @@ export default function ChatInput({ value, onChange, onSend, onStop, droppedFile
 
       {searching ? (
         <p className="text-center text-[10px] text-amber-500/80 mt-1.5 animate-pulse">
-          Searching the web — starting SearXNG if needed…
+          Searching the web…
         </p>
       ) : (
         <p className="text-center text-[10px] text-fg-dim mt-1.5">

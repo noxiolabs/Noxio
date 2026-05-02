@@ -158,6 +158,21 @@ const chatSlice = createSlice({
     },
 
     /**
+     * Reactivates streaming into the last (empty) assistant message for retry.
+     * Used when Ollama returns an empty response because the model is still loading.
+     */
+    retryLastMessage(state) {
+      const conv = state.conversations.find((c) => c.id === state.activeConversationId);
+      if (!conv || conv.messages.length === 0) return;
+      const last = conv.messages[conv.messages.length - 1];
+      if (last?.role !== 'assistant') return;
+      last.content = '';
+      last.thinking = '';
+      state.streaming = true;
+      state.streamingMessageId = last.id;
+    },
+
+    /**
      * Replaces conversations with persisted data loaded from electron-store.
      * Dispatched once at app startup by ipc-middleware after calling load-chat-history.
      * @param {Array} action.payload - Array of persisted conversation objects
@@ -179,6 +194,7 @@ export const {
   appendStreamToken,
   appendThinkingToken,
   finaliseStream,
+  retryLastMessage,
   deleteConversation,
   setSelectedModel,
   hydrateConversations,

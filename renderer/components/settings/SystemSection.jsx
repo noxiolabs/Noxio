@@ -284,6 +284,15 @@ export default function SystemSection() {
                     >
                       Update
                     </button>
+                  ) : info?.checkFailed && !isUpdating ? (
+                    <button
+                      onClick={() => handleUpdate(key)}
+                      disabled={!!updating || checking}
+                      title="Version check failed — force reinstall latest"
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-raise hover:bg-raise/80 disabled:opacity-40 disabled:cursor-not-allowed text-fg transition-colors"
+                    >
+                      Force update
+                    </button>
                   ) : info && !info.updateAvailable && !isUpdating ? (
                     <span className="text-xs px-2 py-1 rounded-full bg-raise text-fg-muted font-medium">
                       Up to date

@@ -320,20 +320,50 @@ async function generateStream(model, messages, win, options = {}) {
         return;
       }
 
+      // Non-200 responses (400, 500, etc.) carry a JSON error body — surface it.
+      if (res.statusCode !== 200) {
+        let errorBody = '';
+        res.on('data', (chunk) => { errorBody += chunk.toString('utf8'); });
+        res.on('end', () => {
+          let msg = `Ollama returned HTTP ${res.statusCode}`;
+          try {
+            const parsed = JSON.parse(errorBody);
+            if (parsed.error) msg = parsed.error;
+          } catch (_) { /* keep default */ }
+          logger.error(`ollama: generateStream HTTP ${res.statusCode} — ${msg}`);
+          if (win && !win.isDestroyed()) win.webContents.send('stream-error', msg);
+          sendComplete();
+          resolve();
+        });
+        res.on('error', () => { sendComplete(); resolve(); });
+        return;
+      }
+
       let buffer = '';
+      let fatalError = false;
 
       res.on('data', (chunk) => {
-        if (aborted) return;
+        if (aborted || fatalError) return;
         buffer += chunk.toString('utf8');
         const lines = buffer.split('\n');
         buffer = lines.pop();
 
         for (const line of lines) {
+          if (fatalError) break;
           const trimmed = line.trim();
           if (!trimmed) continue;
 
           try {
             const obj = JSON.parse(trimmed);
+
+            if (obj.error) {
+              fatalError = true;
+              logger.error(`ollama: generateStream stream error — ${obj.error}`);
+              if (win && !win.isDestroyed()) win.webContents.send('stream-error', obj.error);
+              sendComplete();
+              resolve();
+              break;
+            }
 
             if (obj.message?.thinking) {
               if (win && !win.isDestroyed()) {

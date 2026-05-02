@@ -19,7 +19,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { nanoid } from '@reduxjs/toolkit';
-import { createConversation, sendMessage, finaliseStream } from '../../store/slices/chat';
+import { createConversation, sendMessage, finaliseStream, retryLastMessage } from '../../store/slices/chat';
 import { supportsThinkingToggle, getModelMeta } from '../../utils/model-registry';
 import ConversationSidebar from './ConversationSidebar';
 import MessageList from './MessageList';
@@ -36,6 +36,7 @@ export default function ChatPanel() {
   const contextWindow = useSelector((s) => s.settings.chat.contextWindow);
   const [input, setInput]             = useState('');
   const [streamError, setStreamError] = useState('');
+  const [modelLoading, setModelLoading] = useState(false);
   const [thinkingMode, setThinkingMode] = useState(false);
   const [searching, setSearching]     = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -43,29 +44,87 @@ export default function ChatPanel() {
   const [dropTick, setDropTick] = useState(0);
   const prevStreamingRef = useRef(false);
 
+  /** Saved IPC payload and retry state for model-loading auto-retry */
+  const retryPayloadRef  = useRef(null);
+  const retryAttemptRef  = useRef(0);
+  const retryTimerRef    = useRef(null);
+  const fatalStreamErrorRef = useRef(false);
+  const MAX_RETRY_ATTEMPTS = 12;  // ~96 s at 8 s intervals
+  const RETRY_INTERVAL_MS  = 8_000;
+
   const activeConversation = conversations.find((c) => c.id === activeId);
 
-  // Stream timeout — if no stream-complete arrives within 60 s (e.g. Ollama crash),
-  // force-finalise so the UI doesn't hang on "Generating…" indefinitely.
+  // Two-phase stream timeout:
+  //   INITIAL — time allowed before the first token (model may be loading cold)
+  //   PER_TOKEN — max silence between tokens once streaming has started
   const streamTimeoutRef = useRef(null);
-  const STREAM_TIMEOUT_MS = 60_000;
+  const INITIAL_STREAM_TIMEOUT_MS = 300_000; // 5 min — covers cold model load + web search startup
+  const PER_TOKEN_STREAM_TIMEOUT_MS = 60_000; // 60 s between tokens once streaming begins
 
-  // Reset the stream timeout on each incoming token so long thinking phases
-  // (e.g. gemma4, deepseek-r1) don't trigger the crash-detection timeout.
+  // Reset to the shorter per-token timeout on each incoming token.
   useEffect(() => {
     function resetStreamTimeout() {
-      if (!streamTimeoutRef.current) return; // Not streaming — nothing to reset
+      if (!streamTimeoutRef.current) return;
       clearTimeout(streamTimeoutRef.current);
       streamTimeoutRef.current = setTimeout(() => {
         dispatch(finaliseStream());
         setStreamError('Ollama lost connection. Response may be incomplete.');
-      }, STREAM_TIMEOUT_MS);
+      }, PER_TOKEN_STREAM_TIMEOUT_MS);
     }
 
     window.electronAPI?.on('stream-token', resetStreamTimeout);
     window.electronAPI?.on('stream-thinking', resetStreamTimeout);
+
+    function onStreamError(rawError) {
+      fatalStreamErrorRef.current = true;
+      clearTimeout(streamTimeoutRef.current);
+      streamTimeoutRef.current = null;
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+      retryPayloadRef.current = null;
+      retryAttemptRef.current = 0;
+      setModelLoading(false);
+      dispatch(finaliseStream());
+      setStreamError(friendlyOllamaError(rawError));
+    }
+    window.electronAPI?.on('stream-error', onStreamError);
     // ChatPanel never unmounts during app lifetime, so listener cleanup is omitted.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear retry state when the user switches to a different conversation
+  useEffect(() => {
+    clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = null;
+    retryPayloadRef.current = null;
+    retryAttemptRef.current = 0;
+    setModelLoading(false);
+  }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function scheduleRetry() {
+    if (retryAttemptRef.current >= MAX_RETRY_ATTEMPTS || !retryPayloadRef.current) {
+      setModelLoading(false);
+      setStreamError('Ollama did not respond after loading. Please try again.');
+      return;
+    }
+    setModelLoading(true);
+    retryTimerRef.current = setTimeout(executeRetry, RETRY_INTERVAL_MS);
+  }
+
+  function executeRetry() {
+    retryAttemptRef.current += 1;
+    const payload = retryPayloadRef.current;
+    if (!payload || !window.electronAPI) return;
+
+    dispatch(retryLastMessage());
+    window.electronAPI.sendChatMessage(payload);
+
+    // Reset the initial timeout for this attempt
+    clearTimeout(streamTimeoutRef.current);
+    streamTimeoutRef.current = setTimeout(() => {
+      dispatch(finaliseStream());
+      setStreamError('Ollama lost connection. Response may be incomplete.');
+    }, INITIAL_STREAM_TIMEOUT_MS);
+  }
 
   useEffect(() => {
     if (prevStreamingRef.current && !streaming) {
@@ -73,18 +132,24 @@ export default function ChatPanel() {
       clearTimeout(streamTimeoutRef.current);
       streamTimeoutRef.current = null;
 
-      // Detect empty assistant response: Ollama may have been loading the model
-      // and returned an error before sending any tokens.
       const conv = conversations.find((c) => c.id === activeId);
       if (conv) {
         const last = conv.messages[conv.messages.length - 1];
-        if (last?.role === 'assistant' && !last.content.trim() && !last.thinking?.trim()) {
-          setStreamError('No response received. Ollama may still be loading the model — please try again in a moment.');
+        if (last?.role === 'assistant' && !last.content.trim() && !last.thinking?.trim() && !fatalStreamErrorRef.current) {
+          // Empty response — model is likely still loading into VRAM, auto-retry
+          scheduleRetry();
+        } else {
+          // Successful response — clear any retry state
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+          retryPayloadRef.current = null;
+          retryAttemptRef.current = 0;
+          setModelLoading(false);
         }
       }
     }
     prevStreamingRef.current = streaming;
-  }, [streaming, conversations, activeId]);
+  }, [streaming, conversations, activeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-reset thinking mode when switching to a model that doesn't support toggle thinking.
   // Prevents stale thinkingMode: true from persisting on non-Qwen models.
@@ -108,6 +173,11 @@ export default function ChatPanel() {
 
   async function handleSend(attachments = [], webSearchEnabled = false) {
     setStreamError('');
+    setModelLoading(false);
+    fatalStreamErrorRef.current = false;
+    clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = null;
+    retryAttemptRef.current = 0;
     const content = input.trim();
     if ((!content && attachments.length === 0) || !selectedModel || streaming) return;
 
@@ -158,7 +228,6 @@ export default function ChatPanel() {
       role: m.role,
       content: m.content,
     }));
-    const messages = [...existingMessages, { role: 'user', content: fullContent }];
 
     // Web search: fetch results and prepend context if enabled
     let webSearchUsed = false;
@@ -179,16 +248,19 @@ export default function ChatPanel() {
       }
     }
 
+    // Build messages after web search so Ollama receives the enriched content
+    const messages = [...existingMessages, { role: 'user', content: fullContent }];
+
     dispatch(sendMessage({ content: fullContent, attachments: displayAttachments, webSearchUsed }));
     setInput('');
 
     if (window.electronAPI) {
-      // Always-thinking models (gemma4, deepseek-r1) need think:true unconditionally.
-      // Toggle-thinking models (qwen3) use the user-controlled thinkingMode button.
-      const effectiveThinkingMode =
-        thinkingMode || getModelMeta(selectedModel)?.supportsThinking === 'always';
+      // Only send think:true for toggle-thinking models (Qwen 3/3.5) via the user button.
+      // Always-thinking models (gemma4, deepseek-r1) think natively in their output —
+      // sending think:true to them causes Ollama to return HTTP 400.
+      const effectiveThinkingMode = thinkingMode;
 
-      window.electronAPI.sendChatMessage({
+      const payload = {
         message: fullContent,
         model: selectedModel,
         conversationId: convId,
@@ -197,14 +269,19 @@ export default function ChatPanel() {
         contextWindow,
         thinkingMode: effectiveThinkingMode,
         images: imageAttachments,
-      });
+      };
+
+      // Save for model-loading auto-retry
+      retryPayloadRef.current = payload;
+
+      window.electronAPI.sendChatMessage(payload);
     }
 
     clearTimeout(streamTimeoutRef.current);
     streamTimeoutRef.current = setTimeout(() => {
       dispatch(finaliseStream());
       setStreamError('Ollama lost connection. Response may be incomplete.');
-    }, STREAM_TIMEOUT_MS);
+    }, INITIAL_STREAM_TIMEOUT_MS);
   }
 
   function handleStop() {
@@ -301,12 +378,34 @@ export default function ChatPanel() {
           dropTick={dropTick}
           searching={searching}
         />
+        {modelLoading && !streaming && (
+          <p className="text-center text-xs text-accent/80 pb-2 px-4 animate-pulse">
+            Loading model into memory… retrying automatically
+          </p>
+        )}
         {streamError && (
           <p className="text-center text-xs text-red-400/80 pb-2 px-4">{streamError}</p>
         )}
       </div>
     </div>
   );
+}
+
+function friendlyOllamaError(raw) {
+  if (!raw) return 'Ollama returned an error.';
+  if (raw.includes('unknown model architecture')) {
+    return 'Ollama is out of date and cannot load this model. Go to Settings → System and update Ollama.';
+  }
+  if (raw.includes('unable to load model') || raw.includes('failed to load model')) {
+    return `Failed to load model: ${raw}`;
+  }
+  if (raw.includes('out of memory') || raw.toLowerCase().includes('cuda out of memory') || raw.includes('CUDA error')) {
+    return 'Not enough VRAM to load this model. Try a smaller model or free up VRAM.';
+  }
+  if (raw.includes('model not found') || raw.includes('pull model manifest')) {
+    return `Model not found — try re-downloading it in Settings. (${raw})`;
+  }
+  return raw;
 }
 
 function BrainIcon() {

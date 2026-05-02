@@ -1,8 +1,8 @@
 /**
  * @file ChatSection.jsx
  * @description Settings section for chat behaviour. Lets the user configure the
- * Ollama context window size (num_ctx) and an optional system prompt prepended
- * to every conversation.
+ * Ollama context window size (num_ctx), an optional system prompt, and the
+ * inference provider (Ollama or any OpenAI-compatible endpoint like LM Studio).
  */
 
 import React, { useState } from 'react';
@@ -20,8 +20,10 @@ const WARN_CTX  = 8192;
 export default function ChatSection() {
   const dispatch  = useDispatch();
   const chat      = useSelector((s) => s.settings.chat);
-  const [ctx,     setCtx]     = useState(chat.contextWindow);
-  const [prompt,  setPrompt]  = useState(chat.systemPrompt);
+  const [ctx,            setCtx]            = useState(chat.contextWindow);
+  const [prompt,         setPrompt]         = useState(chat.systemPrompt);
+  const [provider,       setProvider]       = useState(chat.provider ?? 'ollama');
+  const [customEndpoint, setCustomEndpoint] = useState(chat.customEndpoint ?? 'http://localhost:1234');
   const [saving,  setSaving]  = useState(false);
   const [saved,   setSaved]   = useState(false);
   const [error,   setError]   = useState('');
@@ -35,11 +37,12 @@ export default function ChatSection() {
     setSaving(true);
     setError('');
     setSaved(false);
-    const contextWindow = Math.max(MIN_CTX, Math.min(MAX_CTX, Number(ctx) || 4096));
-    const systemPrompt  = prompt.trim();
+    const contextWindow  = Math.max(MIN_CTX, Math.min(MAX_CTX, Number(ctx) || 4096));
+    const systemPrompt   = prompt.trim();
+    const endpoint       = customEndpoint.trim() || 'http://localhost:1234';
     try {
-      await window.electronAPI?.saveChatSettings(contextWindow, systemPrompt);
-      dispatch(updateChatSettings({ contextWindow, systemPrompt }));
+      await window.electronAPI?.saveChatSettings(contextWindow, systemPrompt, provider, endpoint);
+      dispatch(updateChatSettings({ contextWindow, systemPrompt, provider, customEndpoint: endpoint }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -54,39 +57,83 @@ export default function ChatSection() {
       <div>
         <h2 className="text-base font-semibold text-fg mb-1">Chat Settings</h2>
         <p className="text-xs text-fg-dim">
-          Configure context window size and an optional system prompt for all conversations.
+          Configure the inference provider, context window, and an optional system prompt.
         </p>
       </div>
 
-      {/* Context window */}
+      {/* Provider selection */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-fg">Context window</label>
-          <span className="text-sm font-mono text-accent">{ctx.toLocaleString()} tokens</span>
+        <label className="text-sm font-medium text-fg">Inference provider</label>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setProvider('ollama')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              provider === 'ollama'
+                ? 'bg-accent/20 border-accent text-accent'
+                : 'bg-card border-stroke text-fg-dim hover:text-fg hover:border-fg-dim'
+            }`}
+          >
+            Ollama (local)
+          </button>
+          <button
+            onClick={() => setProvider('custom')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              provider === 'custom'
+                ? 'bg-accent/20 border-accent text-accent'
+                : 'bg-card border-stroke text-fg-dim hover:text-fg hover:border-fg-dim'
+            }`}
+          >
+            Custom endpoint
+          </button>
         </div>
-        <input
-          type="range"
-          min={MIN_CTX}
-          max={MAX_CTX}
-          step={STEP_CTX}
-          value={ctx}
-          onChange={handleCtxChange}
-          className="w-full accent-accent"
-        />
-        <div className="flex justify-between text-xs text-fg-faint">
-          <span>{MIN_CTX.toLocaleString()}</span>
-          <span>{MAX_CTX.toLocaleString()}</span>
-        </div>
-        {ctx > WARN_CTX && (
-          <p className="text-xs text-amber-400 bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20">
-            Higher context uses more VRAM. Values above 8,192 may cause out-of-memory
-            errors on 16 GB GPUs depending on model size.
-          </p>
+        {provider === 'custom' && (
+          <div className="flex flex-col gap-1.5 mt-1">
+            <label className="text-xs text-fg-dim">Base URL</label>
+            <input
+              type="text"
+              value={customEndpoint}
+              onChange={(e) => setCustomEndpoint(e.target.value)}
+              placeholder="http://localhost:1234"
+              className="bg-card border border-stroke rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:border-accent font-mono"
+            />
+            <p className="text-xs text-fg-faint">
+              Compatible with LM Studio, Jan, Ollama's OpenAI layer, and any server that implements <code className="text-fg-dim">/v1/chat/completions</code>.
+            </p>
+          </div>
         )}
-        <p className="text-xs text-fg-faint">
-          Default: 4,096. This value is passed as <code className="text-fg-dim">num_ctx</code> to Ollama.
-        </p>
       </div>
+
+      {/* Context window — only relevant for Ollama */}
+      {provider === 'ollama' && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-fg">Context window</label>
+            <span className="text-sm font-mono text-accent">{ctx.toLocaleString()} tokens</span>
+          </div>
+          <input
+            type="range"
+            min={MIN_CTX}
+            max={MAX_CTX}
+            step={STEP_CTX}
+            value={ctx}
+            onChange={handleCtxChange}
+            className="w-full accent-accent"
+          />
+          <div className="flex justify-between text-xs text-fg-faint">
+            <span>{MIN_CTX.toLocaleString()}</span>
+            <span>{MAX_CTX.toLocaleString()}</span>
+          </div>
+          {ctx > WARN_CTX && (
+            <p className="text-xs text-amber-400 bg-amber-500/10 px-3 py-2 rounded-lg border border-amber-500/20">
+              Higher context uses more VRAM. Values above 8,192 may cause out-of-memory
+              errors on 16 GB GPUs depending on model size.
+            </p>
+          )}
+          <p className="text-xs text-fg-faint">
+            Default: 4,096. This value is passed as <code className="text-fg-dim">num_ctx</code> to Ollama.
+          </p>
+        </div>
+      )}
 
       {/* System prompt */}
       <div className="flex flex-col gap-2">

@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { setPullProgress } from '../../store/slices/settings';
+import { setPullProgress, setHfToken } from '../../store/slices/settings';
 
 /**
  * @returns {JSX.Element}
@@ -23,12 +23,42 @@ export default function ModelsSection() {
   const liveServices   = useSelector((s) => s.infrastructure.services);
   const ollamaStatus   = useSelector((s) => s.infrastructure.services?.ollama?.status);
 
+  const storedHfToken = useSelector((s) => s.settings.hfToken ?? '');
+  const [hfTokenInput, setHfTokenInput] = useState(storedHfToken);
+  const [hfSaving,     setHfSaving]     = useState(false);
+  const [hfSaved,      setHfSaved]      = useState(false);
+  const [hfError,      setHfError]      = useState('');
+
   const [models,        setModels]        = useState([]);
   const [pullInput,     setPullInput]     = useState('');
   const [pullError,     setPullError]     = useState('');
   const [deleteError,   setDeleteError]   = useState('');
   const [loading,       setLoading]       = useState(true);
-  const [deletingModel, setDeletingModel] = useState(null); // modelId currently being deleted
+  const [deletingModel, setDeletingModel] = useState(null);
+
+  // Image model reinstall state
+  const [imageModelId,       setImageModelId]       = useState(null);
+  const [reinstalling,       setReinstalling]       = useState(false);
+  const [reinstallPercent,   setReinstallPercent]   = useState(0);
+  const [reinstallMessage,   setReinstallMessage]   = useState('');
+  const [reinstallError,     setReinstallError]     = useState('');
+  const [reinstallDone,      setReinstallDone]      = useState(false);
+
+  async function handleSaveHfToken() {
+    setHfSaving(true);
+    setHfError('');
+    setHfSaved(false);
+    try {
+      await window.electronAPI?.saveHfToken(hfTokenInput.trim());
+      dispatch(setHfToken(hfTokenInput.trim()));
+      setHfSaved(true);
+      setTimeout(() => setHfSaved(false), 2000);
+    } catch (err) {
+      setHfError(err?.message ?? 'Save failed');
+    } finally {
+      setHfSaving(false);
+    }
+  }
 
   /** Fetches models directly from Ollama (live list). */
   async function loadManifest() {
@@ -87,6 +117,44 @@ export default function ModelsSection() {
     return () => window.electronAPI?.off('model-pull-error', onPullError);
   }, []);
 
+  // Load the persisted image model ID from settings
+  useEffect(() => {
+    window.electronAPI?.getSettings?.().then((s) => {
+      setImageModelId(s?.models?.image ?? null);
+    }).catch(() => {});
+  }, []);
+
+  // Wire reinstall progress events
+  useEffect(() => {
+    function onProgress({ percent, message }) {
+      setReinstallPercent(percent);
+      setReinstallMessage(message ?? '');
+    }
+    window.electronAPI?.on('image-model-reinstall-progress', onProgress);
+    return () => window.electronAPI?.off('image-model-reinstall-progress', onProgress);
+  }, []);
+
+  async function handleReinstallImageModel() {
+    setReinstalling(true);
+    setReinstallError('');
+    setReinstallDone(false);
+    setReinstallPercent(0);
+    setReinstallMessage('Starting download…');
+    try {
+      const result = await window.electronAPI?.reinstallImageModel();
+      if (result?.success === false) {
+        setReinstallError(result.error ?? 'Reinstall failed');
+      } else {
+        setReinstallDone(true);
+        setTimeout(() => setReinstallDone(false), 3000);
+      }
+    } catch (err) {
+      setReinstallError(err?.message ?? 'Reinstall failed');
+    } finally {
+      setReinstalling(false);
+    }
+  }
+
   /** Sends a delete-model IPC request and refreshes the list on success. */
   async function handleDelete(modelId) {
     setDeleteError('');
@@ -129,6 +197,66 @@ export default function ModelsSection() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Image model — reinstall companion files if missing */}
+      {imageModelId && (
+        <div className="flex flex-col gap-2">
+          <h2 className="text-base font-semibold text-fg mb-1">Image Model</h2>
+          <div className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-card border border-stroke/60">
+            <span className="text-sm text-fg font-medium">{imageModelId}</span>
+            <button
+              onClick={handleReinstallImageModel}
+              disabled={reinstalling}
+              className="text-xs text-violet-400 hover:text-violet-300 transition-colors px-2 py-1 rounded hover:bg-violet-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {reinstalling ? 'Downloading…' : 'Reinstall'}
+            </button>
+          </div>
+          {reinstalling && (
+            <div className="mt-1">
+              <div className="flex justify-between text-xs text-fg-muted mb-1">
+                <span className="truncate">{reinstallMessage}</span>
+                <span className="flex-shrink-0 ml-2">{reinstallPercent}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-card overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-accent transition-all duration-300"
+                  style={{ width: `${reinstallPercent}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {reinstallDone && <p className="text-xs text-emerald-400">Download complete</p>}
+          {reinstallError && <p className="text-xs text-red-400">{reinstallError}</p>}
+        </div>
+      )}
+
+      {/* HuggingFace token — required for gated models like FLUX.2 Klein */}
+      <div className="flex flex-col gap-2">
+        <h2 className="text-base font-semibold text-fg mb-1">HuggingFace Access Token</h2>
+        <p className="text-xs text-fg-dim">
+          Required to download gated models (e.g. FLUX.2 Klein). Get yours at{' '}
+          <span className="text-fg-dim font-mono">huggingface.co/settings/tokens</span>.
+        </p>
+        <input
+          type="password"
+          value={hfTokenInput}
+          onChange={(e) => setHfTokenInput(e.target.value)}
+          placeholder="hf_••••••••••••••••••••••••••••••••••••"
+          className="bg-card border border-stroke rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-faint focus:outline-none focus:border-accent font-mono"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSaveHfToken}
+            disabled={hfSaving}
+            className="px-4 py-1.5 rounded-lg bg-accent hover:bg-accent/80 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+          >
+            {hfSaving ? 'Saving…' : 'Save token'}
+          </button>
+          {hfSaved && <span className="text-xs text-emerald-400">Saved</span>}
+          {hfError && <span className="text-xs text-red-400">{hfError}</span>}
+        </div>
+      </div>
+
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-base font-semibold text-fg mb-1">Installed Models</h2>

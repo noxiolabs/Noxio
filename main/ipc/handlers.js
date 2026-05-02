@@ -44,9 +44,11 @@ const orchestrator = require('../infrastructure/orchestrator');
 const whisper      = require('../services/whisper');
 const kokoro       = require('../services/kokoro');
 const webSearch    = require('../services/web-search');
+const openaiCompat = require('../services/openai-compat');
 const { scanHardware } = require('../wizard/hardware-scan');
 const { recommend, getAlternatives } = require('../wizard/model-recommender');
 const { runInstallation } = require('../infrastructure/installer');
+const { downloadImageCheckpoint } = require('../wizard/service-installer');
 const manifest = require('../infrastructure/manifest');
 
 // electron-store — persists settings across app restarts
@@ -518,6 +520,11 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
   ipcMain.handle('list-models', async () => {
     try {
       logger.info('IPC: list-models');
+      const provider       = store.get('settings.chat.provider', 'ollama');
+      const customEndpoint = store.get('settings.chat.customEndpoint', 'http://localhost:1234');
+      if (provider === 'custom') {
+        return await openaiCompat.listModels(customEndpoint);
+      }
       return await ollama.listModels();
     } catch (err) {
       logger.error(`IPC: list-models failed — ${err.message}\n${err.stack}`);
@@ -540,17 +547,24 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
    */
   ipcMain.handle('send-chat-message', async (_event, { messages, model, conversationId, systemPrompt, contextWindow, thinkingMode, images } = {}) => {
     try {
-      logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}, thinking: ${!!thinkingMode}, images: ${images?.length ?? 0}`);
+      const provider       = store.get('settings.chat.provider', 'ollama');
+      const customEndpoint = store.get('settings.chat.customEndpoint', 'http://localhost:1234');
+
+      logger.info(`IPC: send-chat-message — model: ${model}, conv: ${conversationId}, turns: ${messages?.length}, provider: ${provider}, thinking: ${!!thinkingMode}, images: ${images?.length ?? 0}`);
 
       if (!mainWindow.isDestroyed()) {
         mainWindow.webContents.send('routing-decision', {
-          provider: 'local',
+          provider: provider === 'custom' ? customEndpoint : 'local',
           model,
           conversationId,
         });
       }
 
-      await ollama.generateStream(model, messages, mainWindow, { systemPrompt, contextWindow, think: thinkingMode, images });
+      if (provider === 'custom') {
+        await openaiCompat.generateStream(model, messages, mainWindow, { systemPrompt }, customEndpoint);
+      } else {
+        await ollama.generateStream(model, messages, mainWindow, { systemPrompt, contextWindow, think: thinkingMode, images });
+      }
     } catch (err) {
       logger.error(`IPC: send-chat-message error — ${err.message}\n${err.stack}`);
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -567,6 +581,7 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
     logger.info('IPC: stop-stream');
     try {
       ollama.stopGeneration();
+      openaiCompat.stopGeneration();
     } catch (err) {
       logger.error(`IPC: stop-stream error — ${err.message}`);
     }
@@ -740,13 +755,16 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
         }
       };
 
+      const imageModel = store.get('settings.models.image', null);
+
       const imageDataUrl = await orchestrator.generateImageWithVRAMSwap(
         prompt.trim(),
         safeStyle,
         safeQuality,
         onProgress,
         referenceImageData || null,
-        safeStrength
+        safeStrength,
+        imageModel
       );
 
       return { imagePath: imageDataUrl };
@@ -891,6 +909,46 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
 
 
   /**
+   * Re-downloads the currently selected image model (and its companion files).
+   * Progress is emitted via 'image-model-reinstall-progress' events: { percent, message }.
+   * Uses the HF token from store for gated models.
+   * @returns {{ success: boolean, error?: string }}
+   */
+  ipcMain.handle('reinstall-image-model', async () => {
+    const imageModelId = store.get('settings.models.image', null);
+    const installDir   = store.get('settings.installDir', null);
+    const hfToken      = store.get('settings.hfToken', null) || null;
+
+    if (!imageModelId) {
+      return { success: false, error: 'No image model configured — run setup first.' };
+    }
+    if (!installDir) {
+      return { success: false, error: 'No install directory configured — run setup first.' };
+    }
+
+    logger.info(`IPC: reinstall-image-model — model: ${imageModelId}`);
+
+    const emit = (percent, message) => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('image-model-reinstall-progress', { percent, message });
+      }
+    };
+
+    try {
+      emit(0, `Downloading ${imageModelId}…`);
+      await downloadImageCheckpoint(installDir, imageModelId, (pct) => {
+        emit(pct, pct < 100 ? `Downloading ${imageModelId}… ${pct}%` : 'Download complete');
+      }, hfToken);
+      logger.info(`IPC: reinstall-image-model — ${imageModelId} complete`);
+      emit(100, 'Done');
+      return { success: true };
+    } catch (err) {
+      logger.error(`IPC: reinstall-image-model failed — ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
    * Sets the default model for a given capability. Validates the model exists in
    * Ollama before persisting (skipped for 'image' — image models are not in Ollama).
    * @param {{ capability: 'chat'|'coding'|'image', model: string }} payload
@@ -1012,12 +1070,32 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
   });
 
   /**
+   * Persists UI appearance settings (theme, fontSize) to electron-store.
+   * @param {{ theme: string, fontSize: string }} payload
+   * @returns {{ success: boolean, error?: string }}
+   */
+  ipcMain.handle('save-ui-settings', (_event, { theme, fontSize } = {}) => {
+    try {
+      const uiSettings = {
+        theme: typeof theme === 'string' ? theme : 'dark',
+        fontSize: typeof fontSize === 'string' ? fontSize : 'medium',
+      };
+      store.set('settings.ui', uiSettings);
+      logger.info(`IPC: UI settings saved — theme: ${uiSettings.theme}, fontSize: ${uiSettings.fontSize}`);
+      return { success: true };
+    } catch (err) {
+      logger.error(`IPC: save-ui-settings failed — ${err.message}\n${err.stack}`);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
    * Persists chat settings (context window size and system prompt) to electron-store.
    * contextWindow must be between 512 and 32768 (inclusive).
    * @param {{ contextWindow: number, systemPrompt: string }} payload
    * @returns {{ success: boolean, error?: string }}
    */
-  ipcMain.handle('save-chat-settings', (_event, { contextWindow, systemPrompt } = {}) => {
+  ipcMain.handle('save-chat-settings', (_event, { contextWindow, systemPrompt, provider, customEndpoint } = {}) => {
     try {
       logger.info('IPC: save-chat-settings');
 
@@ -1029,17 +1107,42 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
         };
       }
 
+      const validProvider = provider === 'custom' ? 'custom' : 'ollama';
+      const endpoint = typeof customEndpoint === 'string' && customEndpoint.trim()
+        ? customEndpoint.trim()
+        : 'http://localhost:1234';
+
       const chatSettings = {
         contextWindow: ctx,
         systemPrompt: typeof systemPrompt === 'string' ? systemPrompt : '',
+        provider: validProvider,
+        customEndpoint: endpoint,
       };
 
       store.set('settings.chat', chatSettings);
-      logger.info(`IPC: chat settings saved — contextWindow: ${ctx}, systemPrompt: ${chatSettings.systemPrompt.length} chars`);
+      logger.info(`IPC: chat settings saved — contextWindow: ${ctx}, provider: ${validProvider}, endpoint: ${endpoint}`);
 
       return { success: true };
     } catch (err) {
       logger.error(`IPC: save-chat-settings failed — ${err.message}\n${err.stack}`);
+      return { success: false, error: err.message };
+    }
+  });
+
+  /**
+   * Persists a HuggingFace access token to electron-store.
+   * Used when downloading gated models such as FLUX.2 Klein.
+   * @param {{ token: string }} payload
+   * @returns {{ success: boolean, error?: string }}
+   */
+  ipcMain.handle('save-hf-token', (_event, { token } = {}) => {
+    try {
+      const trimmed = typeof token === 'string' ? token.trim() : '';
+      store.set('settings.hfToken', trimmed);
+      logger.info(`IPC: HuggingFace token ${trimmed ? 'saved' : 'cleared'}`);
+      return { success: true };
+    } catch (err) {
+      logger.error(`IPC: save-hf-token failed — ${err.message}`);
       return { success: false, error: err.message };
     }
   });
@@ -1119,6 +1222,15 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
 
   // ─── System Updates ─────────────────────────────────────────────────────
 
+  function semverGt(a, b) {
+    const parse = (v) => v.split('.').map(Number);
+    const [aMaj, aMin, aPat] = parse(a);
+    const [bMaj, bMin, bPat] = parse(b);
+    if (aMaj !== bMaj) return aMaj > bMaj;
+    if (aMin !== bMin) return aMin > bMin;
+    return aPat > bPat;
+  }
+
   /**
    * Checks the installed and latest version of each managed service.
    * Currently only covers Ollama. Returns a map of service → version info.
@@ -1135,13 +1247,13 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
       const updateAvailable =
         !!currentVersion &&
         !!latestVersion &&
-        currentVersion !== latestVersion;
+        semverGt(latestVersion, currentVersion);
 
       logger.info(`IPC: check-service-updates — ollama current=${currentVersion}, latest=${latestVersion}`);
-      return { ollama: { currentVersion, latestVersion, updateAvailable } };
+      return { ollama: { currentVersion, latestVersion, updateAvailable, checkFailed: latestVersion === null } };
     } catch (err) {
       logger.error(`IPC: check-service-updates failed — ${err.message}`);
-      return { ollama: { currentVersion: null, latestVersion: null, updateAvailable: false } };
+      return { ollama: { currentVersion: null, latestVersion: null, updateAvailable: false, checkFailed: true } };
     }
   });
 
@@ -1166,9 +1278,11 @@ function registerHandlers(mainWindow, gameModeApi = {}) {
     }
 
     try {
-      sendProgress(0, 'Starting update...');
+      sendProgress(0, 'Stopping Ollama...');
+      await processManager.stopService('ollama').catch(() => {});
+      sendProgress(2, 'Downloading...');
       await installOllama((percent) => {
-        sendProgress(percent, percent < 80 ? 'Downloading...' : percent < 90 ? 'Installing...' : 'Starting...');
+        sendProgress(2 + Math.floor(percent * 0.98), percent < 80 ? 'Downloading...' : percent < 90 ? 'Installing...' : 'Starting...');
       });
       sendProgress(100, 'Update complete');
       if (!mainWindow.isDestroyed()) {
