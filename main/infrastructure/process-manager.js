@@ -572,6 +572,17 @@ function getServiceStates() {
   return JSON.parse(JSON.stringify(serviceStates));
 }
 
+/**
+ * Returns the ComfyUI models directory path, derived from the persisted bat path.
+ * Returns null if ComfyUI was never installed.
+ * @returns {string|null}
+ */
+function getComfyUIModelsPath() {
+  const batPath = _servicePaths['comfyui'];
+  if (!batPath) return null;
+  return path.join(path.dirname(batPath), 'ComfyUI', 'models');
+}
+
 module.exports = {
   init,
   setPersistedPaths,
@@ -579,5 +590,6 @@ module.exports = {
   stopService,
   stopAll,
   getServiceStates,
+  getComfyUIModelsPath,
   SERVICE_CONFIG,
 };

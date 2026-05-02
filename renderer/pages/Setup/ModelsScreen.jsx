@@ -9,7 +9,9 @@
  * accurate storage requirements, so models are pre-fetched.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+
+const GATED_MODEL_IDS = new Set(['FLUX.2-klein-9b-fp8']);
 
 const CAP_LABELS = {
   chat: 'Chat',
@@ -61,6 +63,8 @@ export default function ModelsScreen({
 }) {
   const [recs, setRecs] = useState(recommendations);
   const [loading, setLoading] = useState(!recommendations);
+  const [hfToken, setHfToken] = useState('');
+  const [hfSaving, setHfSaving] = useState(false);
 
   /**
    * Per-capability user selection. Keys are capability names, values are model name
@@ -111,6 +115,23 @@ export default function ModelsScreen({
     const updated = { ...selections, [cap]: model };
     setSelections(updated);
     onModels(updated);
+  }
+
+  const needsHfToken = useMemo(
+    () => Object.values(selections).some((m) => GATED_MODEL_IDS.has(m)),
+    [selections]
+  );
+
+  async function handleNext() {
+    if (needsHfToken && hfToken.trim()) {
+      setHfSaving(true);
+      try {
+        await window.electronAPI?.saveHfToken(hfToken.trim());
+      } finally {
+        setHfSaving(false);
+      }
+    }
+    onNext();
   }
 
   if (loading) {
@@ -238,6 +259,87 @@ export default function ModelsScreen({
         )}
       </div>
 
+      {needsHfToken && (
+        <div className="w-full max-w-sm flex flex-col gap-4 rounded-xl bg-zinc-900 border border-violet-900/50 p-4">
+          <div>
+            <p className="text-sm font-semibold text-white">One extra step for this model</p>
+            <p className="text-xs text-zinc-400 mt-1">
+              FLUX.2 Klein 9B is hosted on HuggingFace — a website where AI models are stored.
+              The model's creators require a free account before you can download it.
+              This takes about 2 minutes.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {/* Step 1 */}
+            <div className="flex gap-3 items-start">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-violet-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">1</span>
+              <div>
+                <p className="text-xs font-medium text-zinc-200">Create a free HuggingFace account</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Skip this step if you already have one.</p>
+                <a
+                  href="https://huggingface.co/join"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block mt-1.5 text-xs text-violet-400 hover:text-violet-300 underline underline-offset-2"
+                >
+                  Sign up at huggingface.co →
+                </a>
+              </div>
+            </div>
+
+            {/* Step 2 */}
+            <div className="flex gap-3 items-start">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-violet-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
+              <div>
+                <p className="text-xs font-medium text-zinc-200">Accept the model license</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Open the model page and click <span className="text-zinc-300 font-medium">Agree and access repository</span>.</p>
+                <a
+                  href="https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block mt-1.5 text-xs text-violet-400 hover:text-violet-300 underline underline-offset-2"
+                >
+                  Open FLUX.2 Klein model page →
+                </a>
+              </div>
+            </div>
+
+            {/* Step 3 */}
+            <div className="flex gap-3 items-start">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-violet-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">3</span>
+              <div>
+                <p className="text-xs font-medium text-zinc-200">Create an access token</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Click <span className="text-zinc-300 font-medium">Create new token</span>, give it any name, keep the type as <span className="text-zinc-300 font-medium">Read</span>, then click <span className="text-zinc-300 font-medium">Generate token</span>. Copy the token that appears.</p>
+                <a
+                  href="https://huggingface.co/settings/tokens/new?tokenType=read"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block mt-1.5 text-xs text-violet-400 hover:text-violet-300 underline underline-offset-2"
+                >
+                  Open token settings →
+                </a>
+              </div>
+            </div>
+
+            {/* Step 4 — paste */}
+            <div className="flex gap-3 items-start">
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-violet-600 text-white text-xs font-bold flex items-center justify-center mt-0.5">4</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-zinc-200">Paste your token below</p>
+                <input
+                  type="password"
+                  value={hfToken}
+                  onChange={(e) => setHfToken(e.target.value)}
+                  placeholder="hf_••••••••••••••••••••••••••••••••••••"
+                  className="mt-1.5 w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-violet-500 font-mono"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {installDir ? (
         <p className="text-xs text-zinc-500 text-center">
           Files will be stored in:{' '}
@@ -257,11 +359,11 @@ export default function ModelsScreen({
           ← Back
         </button>
         <button
-          onClick={onNext}
-          disabled={downloadableCount === 0 || installDir === null}
+          onClick={handleNext}
+          disabled={downloadableCount === 0 || installDir === null || hfSaving || (needsHfToken && !hfToken.trim())}
           className="px-8 py-3 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium transition-colors"
         >
-          Download & Install →
+          {hfSaving ? 'Saving…' : 'Download & Install →'}
         </button>
       </div>
     </div>

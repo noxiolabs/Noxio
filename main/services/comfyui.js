@@ -7,8 +7,8 @@
  *
  * Supported models (per VRAM tier):
  *   18GB+     → FLUX.1-dev-fp8
- *   10–18GB   → FLUX.1-schnell-fp8
- *   6–10GB    → SDXL-lightning
+ *   10–18GB   → FLUX.2-klein-9b-fp8
+ *   6–10GB    → FLUX.2-klein-4b-fp8
  *   3–6GB     → SDXL 4-bit
  *
  * Generation flow:
@@ -20,17 +20,91 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const http = require('http');
 const logger = require('../utils/logger');
 const processManager = require('../infrastructure/process-manager');
 
 const COMFYUI_BASE_URL = 'http://127.0.0.1:8188';
 
-/** Poll interval in ms when waiting for a generation job to complete */
-const POLL_INTERVAL_MS = 1000;
+/** Maps model IDs (as stored in settings.models.image) to ComfyUI checkpoint filenames.
+ *  For FLUX.2 Klein models, this is the diffusion model filename (loaded via UNETLoader,
+ *  not CheckpointLoaderSimple) — the VAE and text encoder filenames are fixed constants below.
+ */
+const MODEL_FILENAMES = {
+  'FLUX.1-dev-fp8':        'flux1-dev-fp8.safetensors',
+  'FLUX.1-schnell-fp8':    'flux1-schnell-fp8.safetensors',
+  'FLUX.2-klein-9b-fp8':   'flux-2-klein-9b-fp8.safetensors',
+  'FLUX.2-klein-4b-fp8':   'flux-2-klein-4b-fp8.safetensors',
+  'SDXL-lightning':        'sdxl-lightning-4step.safetensors',
+  'SDXL-4bit':             'sdxl-4bit.safetensors',
+};
 
-/** Maximum number of poll attempts before timing out (~5 minutes) */
-const MAX_POLL_ATTEMPTS = 300;
+// FLUX.2 Klein uses a split-model architecture: separate diffusion model, VAE, and text encoder.
+// The VAE is shared but the text encoder differs — 9B needs Qwen3-8B (12288-dim output),
+// 4B needs Qwen3-4B (7680-dim). Using the wrong encoder causes a matrix shape crash.
+const KLEIN_VAE_FILE = 'flux2-vae.safetensors';
+const KLEIN_TEXT_ENCODER_FILES = {
+  'FLUX.2-klein-4b-fp8': 'qwen_3_4b_fp4_flux2.safetensors',
+  'FLUX.2-klein-9b-fp8': 'qwen_3_8b_fp8mixed.safetensors',
+};
+
+/** Poll interval in ms when waiting for a generation job to complete */
+const POLL_INTERVAL_MS = 2000;
+
+/** Maximum number of poll attempts before timing out (~15 minutes) */
+const MAX_POLL_ATTEMPTS = 450;
+
+// ─── Klein Pre-flight ─────────────────────────────────────────────────────────
+
+/**
+ * Ensures all FLUX.2 Klein model files are in the correct ComfyUI subfolders.
+ * Migrates the diffusion model from the old checkpoints/ location if needed.
+ * Throws a clear error if companion files (VAE, text encoder) are missing so the
+ * user gets an actionable message rather than a cryptic ComfyUI execution error.
+ *
+ * @param {string} modelFilename - Diffusion model filename (e.g. 'flux-2-klein-9b-fp8.safetensors')
+ * @param {string} imageModel - Model ID from settings (e.g. 'FLUX.2-klein-9b-fp8')
+ * @returns {string} The text encoder filename for this variant
+ */
+function ensureKleinFiles(modelFilename, imageModel) {
+  const modelsBase = processManager.getComfyUIModelsPath();
+  if (!modelsBase) return KLEIN_TEXT_ENCODER_FILES['FLUX.2-klein-4b-fp8']; // ComfyUI not installed
+
+  const diffusionDest = path.join(modelsBase, 'diffusion_models', modelFilename);
+
+  if (!fs.existsSync(diffusionDest)) {
+    // Try migrating from the old checkpoints/ location
+    const oldPath = path.join(modelsBase, 'checkpoints', modelFilename);
+    if (fs.existsSync(oldPath)) {
+      logger.info(`comfyui: migrating Klein diffusion model from checkpoints/ to diffusion_models/`);
+      fs.mkdirSync(path.dirname(diffusionDest), { recursive: true });
+      fs.renameSync(oldPath, diffusionDest);
+      logger.info(`comfyui: migration complete — ${modelFilename}`);
+    }
+    // If still missing after migration attempt, ComfyUI will surface a clear file-not-found error
+  }
+
+  const textEncoderFile = KLEIN_TEXT_ENCODER_FILES[imageModel] ?? KLEIN_TEXT_ENCODER_FILES['FLUX.2-klein-4b-fp8'];
+
+  // Check companion files — these were never downloaded in older installs
+  const vaePath     = path.join(modelsBase, 'vae', KLEIN_VAE_FILE);
+  const clipPath    = path.join(modelsBase, 'text_encoders', textEncoderFile);
+  const missingFiles = [];
+  if (!fs.existsSync(vaePath))  missingFiles.push(`vae/${KLEIN_VAE_FILE}`);
+  if (!fs.existsSync(clipPath)) missingFiles.push(`text_encoders/${textEncoderFile}`);
+
+  if (missingFiles.length > 0) {
+    throw new Error(
+      `FLUX.2 Klein requires additional model files that aren't downloaded yet: ` +
+      `${missingFiles.join(', ')}. ` +
+      `Go to Settings → Models → Image Model and click "Reinstall image model" to download them.`
+    );
+  }
+
+  return textEncoderFile;
+}
 
 // ─── Workflow Templates ────────────────────────────────────────────────────────
 
@@ -90,11 +164,12 @@ function uploadImage(imageBuffer, mimeType, filename) {
  * @param {number} steps - Inference steps
  * @param {string} uploadedFilename - Filename returned by /upload/image
  * @param {number} strength - Denoise strength 0.1–1.0 (higher = more prompt, less reference)
+ * @param {string} [modelFile] - ComfyUI checkpoint filename
  * @returns {Object} ComfyUI workflow object
  */
-function buildImg2ImgFluxWorkflow(prompt, steps, uploadedFilename, strength) {
+function buildImg2ImgFluxWorkflow(prompt, steps, uploadedFilename, strength, modelFile = 'flux1-schnell-fp8.safetensors') {
   return {
-    '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: 'flux1-schnell-fp8.safetensors' } },
+    '1': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: modelFile } },
     '2': { class_type: 'CLIPTextEncode', inputs: { text: prompt, clip: ['1', 1] } },
     '3': { class_type: 'CLIPTextEncode', inputs: { text: '', clip: ['1', 1] } },
     '4': { class_type: 'LoadImage', inputs: { image: uploadedFilename, upload: 'image' } },
@@ -125,16 +200,16 @@ function buildImg2ImgFluxWorkflow(prompt, steps, uploadedFilename, strength) {
  *
  * @param {string} prompt - Positive text prompt
  * @param {number} steps - Number of inference steps
- * @param {number} cfg - CFG scale (classifier-free guidance)
+ * @param {string} [modelFile] - ComfyUI checkpoint filename
  * @returns {Object} ComfyUI workflow object
  */
-function buildFluxWorkflow(prompt, steps) {
-  // FLUX.1-schnell is timestep-distilled — CFG must be 1.0.
+function buildFluxWorkflow(prompt, steps, modelFile = 'flux1-schnell-fp8.safetensors') {
+  // FLUX schnell/Klein are timestep-distilled — CFG must be 1.0.
   // Higher values break generation and crash the ComfyUI execution worker.
   return {
     '1': {
       class_type: 'CheckpointLoaderSimple',
-      inputs: { ckpt_name: 'flux1-schnell-fp8.safetensors' },
+      inputs: { ckpt_name: modelFile },
     },
     '2': {
       class_type: 'CLIPTextEncode',
@@ -171,6 +246,84 @@ function buildFluxWorkflow(prompt, steps) {
       class_type: 'SaveImage',
       inputs: { images: ['6', 0], filename_prefix: 'noxio' },
     },
+  };
+}
+
+/**
+ * Returns a FLUX.2 Klein txt2img workflow using the split-model architecture.
+ * Klein is NOT a combined checkpoint — it requires UNETLoader + CLIPLoader(flux2) + VAELoader.
+ *
+ * @param {string} prompt - Positive text prompt
+ * @param {number} steps - Number of inference steps
+ * @param {string} [modelFile] - Diffusion model filename (loaded by UNETLoader)
+ * @param {string} [textEncoderFile] - Text encoder filename (varies by Klein variant)
+ * @returns {Object} ComfyUI workflow object
+ */
+function buildKleinWorkflow(prompt, steps, modelFile = 'flux-2-klein-4b-fp8.safetensors', textEncoderFile = KLEIN_TEXT_ENCODER_FILES['FLUX.2-klein-4b-fp8']) {
+  return {
+    '1': { class_type: 'UNETLoader',       inputs: { unet_name: modelFile, weight_dtype: 'default' } },
+    '2': { class_type: 'CLIPLoader',       inputs: { clip_name: textEncoderFile, type: 'flux2', device: 'default' } },
+    '3': { class_type: 'VAELoader',        inputs: { vae_name: KLEIN_VAE_FILE } },
+    '4': { class_type: 'CLIPTextEncode',   inputs: { text: prompt, clip: ['2', 0] } },
+    '5': { class_type: 'CLIPTextEncode',   inputs: { text: '', clip: ['2', 0] } },
+    '6': { class_type: 'EmptyLatentImage', inputs: { width: 1024, height: 1024, batch_size: 1 } },
+    '7': {
+      class_type: 'KSampler',
+      inputs: {
+        model:        ['1', 0],
+        positive:     ['4', 0],
+        negative:     ['5', 0],
+        latent_image: ['6', 0],
+        seed:         Math.floor(Math.random() * 2 ** 32),
+        steps,
+        cfg:          1.0,
+        sampler_name: 'euler',
+        scheduler:    'simple',
+        denoise:      1.0,
+      },
+    },
+    '8': { class_type: 'VAEDecode',  inputs: { samples: ['7', 0], vae: ['3', 0] } },
+    '9': { class_type: 'SaveImage',  inputs: { images: ['8', 0], filename_prefix: 'noxio' } },
+  };
+}
+
+/**
+ * Returns a FLUX.2 Klein img2img workflow using the split-model architecture.
+ *
+ * @param {string} prompt - Positive text prompt
+ * @param {number} steps - Number of inference steps
+ * @param {string} uploadedFilename - Filename returned by /upload/image
+ * @param {number} strength - Denoise strength 0.1–1.0
+ * @param {string} [modelFile] - Diffusion model filename
+ * @param {string} [textEncoderFile] - Text encoder filename (varies by Klein variant)
+ * @returns {Object} ComfyUI workflow object
+ */
+function buildKleinImg2ImgWorkflow(prompt, steps, uploadedFilename, strength, modelFile = 'flux-2-klein-4b-fp8.safetensors', textEncoderFile = KLEIN_TEXT_ENCODER_FILES['FLUX.2-klein-4b-fp8']) {
+  return {
+    '1':  { class_type: 'UNETLoader',       inputs: { unet_name: modelFile, weight_dtype: 'default' } },
+    '2':  { class_type: 'CLIPLoader',       inputs: { clip_name: textEncoderFile, type: 'flux2', device: 'default' } },
+    '3':  { class_type: 'VAELoader',        inputs: { vae_name: KLEIN_VAE_FILE } },
+    '4':  { class_type: 'CLIPTextEncode',   inputs: { text: prompt, clip: ['2', 0] } },
+    '5':  { class_type: 'CLIPTextEncode',   inputs: { text: '', clip: ['2', 0] } },
+    '6':  { class_type: 'LoadImage',        inputs: { image: uploadedFilename, upload: 'image' } },
+    '7':  { class_type: 'VAEEncode',        inputs: { pixels: ['6', 0], vae: ['3', 0] } },
+    '8':  {
+      class_type: 'KSampler',
+      inputs: {
+        model:        ['1', 0],
+        positive:     ['4', 0],
+        negative:     ['5', 0],
+        latent_image: ['7', 0],
+        seed:         Math.floor(Math.random() * 2 ** 32),
+        steps,
+        cfg:          1.0,
+        sampler_name: 'euler',
+        scheduler:    'simple',
+        denoise:      strength,
+      },
+    },
+    '9':  { class_type: 'VAEDecode',  inputs: { samples: ['8', 0], vae: ['3', 0] } },
+    '10': { class_type: 'SaveImage',  inputs: { images: ['9', 0], filename_prefix: 'noxio' } },
   };
 }
 
@@ -254,12 +407,17 @@ function buildSdxlWorkflow(prompt, steps, anime) {
  * @param {'draft'|'standard'|'high'} quality
  * @param {string|null} referenceImageFilename - Filename from /upload/image, or null for txt2img
  * @param {number} strength - Denoise strength for img2img (ignored when no reference)
+ * @param {string|null} [imageModel] - Model ID from settings (e.g. 'FLUX.2-klein-4b-fp8')
  * @returns {Object} ComfyUI workflow JSON object
  */
-function buildWorkflow(prompt, style, quality, referenceImageFilename = null, strength = 0.5) {
+function buildWorkflow(prompt, style, quality, referenceImageFilename = null, strength = 0.5, imageModel = null) {
+  const modelFile = MODEL_FILENAMES[imageModel] ?? 'flux1-schnell-fp8.safetensors';
+  const isKlein = imageModel?.startsWith('FLUX.2-klein');
+  const isSdxl  = imageModel?.startsWith('SDXL');
+
   const stepsMap = { draft: 4, standard: 8, high: 20 };
-  // FLUX-schnell is a distilled model — img2img needs at least 20 steps to
-  // preserve structure from the reference, so we ignore the quality preset here.
+  // Distilled models (FLUX schnell/Klein) need at least 20 steps for img2img to
+  // preserve reference structure — ignore the quality preset in that case.
   const steps = referenceImageFilename ? 20 : (stepsMap[quality] ?? 8);
 
   const stylePrefix = {
@@ -271,22 +429,24 @@ function buildWorkflow(prompt, style, quality, referenceImageFilename = null, st
 
   const styledPrompt = `${stylePrefix}${prompt}`;
 
-  if (referenceImageFilename) {
-    return buildImg2ImgFluxWorkflow(styledPrompt, steps, referenceImageFilename, strength);
+  // FLUX.2 Klein uses split-model architecture (UNETLoader, not CheckpointLoaderSimple).
+  // Text encoder varies by variant — pass it explicitly so the workflow uses the right file.
+  if (isKlein) {
+    const textEncoderFile = KLEIN_TEXT_ENCODER_FILES[imageModel] ?? KLEIN_TEXT_ENCODER_FILES['FLUX.2-klein-4b-fp8'];
+    return referenceImageFilename
+      ? buildKleinImg2ImgWorkflow(styledPrompt, steps, referenceImageFilename, strength, modelFile, textEncoderFile)
+      : buildKleinWorkflow(styledPrompt, steps, modelFile, textEncoderFile);
   }
 
-  switch (style) {
-    case 'photorealistic':
-      return buildFluxWorkflow(prompt, steps);
-    case 'artistic':
-      return buildFluxWorkflow(`artistic interpretation, painterly, ${prompt}`, steps);
-    case 'abstract':
-      return buildFluxWorkflow(`abstract art, surreal, geometric shapes, bold colors, ${prompt}`, steps);
-    case 'anime':
-      return buildFluxWorkflow(`anime style, vibrant colors, detailed linework, ${prompt}`, steps);
-    default:
-      return buildFluxWorkflow(prompt, steps);
+  if (referenceImageFilename) {
+    return buildImg2ImgFluxWorkflow(styledPrompt, steps, referenceImageFilename, strength, modelFile);
   }
+
+  if (isSdxl) {
+    return buildSdxlWorkflow(styledPrompt, steps, style === 'anime');
+  }
+
+  return buildFluxWorkflow(styledPrompt, steps, modelFile);
 }
 
 // ─── HTTP Helpers ──────────────────────────────────────────────────────────────
@@ -452,11 +612,12 @@ async function stop() {
  * @param {Function} params.onProgress - Callback invoked with percent (0–100)
  * @param {string|null} [params.referenceImageData] - Base64 data URL of reference image for img2img
  * @param {number} [params.strength=0.75] - Denoise strength for img2img (0.1 subtle → 1.0 ignore reference)
+ * @param {string|null} [params.imageModel] - Model ID from settings (e.g. 'FLUX.2-klein-4b-fp8')
  * @returns {Promise<string>} Base64 data URL of the generated image (e.g. 'data:image/png;base64,...')
  * @throws {Error} If ComfyUI is unreachable, the job fails, or the image cannot be fetched
  */
-async function generateImage({ prompt, style, quality, onProgress, abortSignal, referenceImageData = null, strength = 0.5 }) {
-  logger.info(`comfyui: generateImage — style=${style}, quality=${quality}, img2img=${!!referenceImageData}`);
+async function generateImage({ prompt, style, quality, onProgress, abortSignal, referenceImageData = null, strength = 0.5, imageModel = null }) {
+  logger.info(`comfyui: generateImage — style=${style}, quality=${quality}, model=${imageModel ?? 'default'}, img2img=${!!referenceImageData}`);
 
   // Verify ComfyUI is reachable before submitting
   const running = await checkRunning();
@@ -482,8 +643,14 @@ async function generateImage({ prompt, style, quality, onProgress, abortSignal, 
     onProgress(15);
   }
 
+  // FLUX.2 Klein: verify all required files exist and migrate old checkpoint-folder installs
+  if (imageModel?.startsWith('FLUX.2-klein')) {
+    const modelFilename = MODEL_FILENAMES[imageModel];
+    if (modelFilename) ensureKleinFiles(modelFilename, imageModel);
+  }
+
   // Build the workflow and submit it
-  const workflow = buildWorkflow(prompt, style, quality, referenceImageFilename, strength);
+  const workflow = buildWorkflow(prompt, style, quality, referenceImageFilename, strength, imageModel);
   logger.info('comfyui: submitting workflow to /prompt');
 
   const submitResult = await comfyPost('/prompt', { prompt: workflow });
@@ -525,10 +692,24 @@ async function generateImage({ prompt, style, quality, onProgress, abortSignal, 
         break;
       }
 
+      // Every 30 polls, check /queue — if the job isn't there or in history, it vanished
+      if (attempts % 30 === 0) {
+        try {
+          const queueData = await comfyGet('/queue');
+          const inQueue =
+            queueData.queue_running?.some((item) => item[1] === promptId) ||
+            queueData.queue_pending?.some((item) => item[1] === promptId);
+          if (!inQueue) {
+            logger.warn(`comfyui: job ${promptId} not found in queue or history after ${attempts} polls — ComfyUI may have dropped it`);
+          }
+        } catch (_) { /* non-fatal */ }
+      }
+
       // Emit progress: 15% at start → 90% while polling
       const pollProgress = Math.min(15 + Math.floor((attempts / MAX_POLL_ATTEMPTS) * 75), 90);
       onProgress(pollProgress);
     } catch (pollErr) {
+      if (pollErr.message.startsWith('ComfyUI job failed')) throw pollErr;
       logger.warn(`comfyui: poll attempt ${attempts} failed — ${pollErr.message}`);
     }
   }

@@ -153,16 +153,54 @@ export default function CreatePanel() {
           />
         </div>
 
-        {/* Reference image (img2img) — disabled until FLUX.2 Klein support lands in v0.2 */}
-        <div className="select-none">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] text-fg-dim uppercase tracking-wider">Reference Image</p>
-            <span className="text-[9px] text-accent bg-accent/10 border border-accent/30 rounded px-1.5 py-0.5">Coming in v0.2</span>
-          </div>
-          <div className="opacity-50 pointer-events-none flex flex-col items-center justify-center gap-1.5 w-full h-20 border border-dashed border-stroke rounded-lg">
-            <UploadIcon />
-            <span className="text-[10px] text-fg-faint">Click or drop an image</span>
-          </div>
+        {/* Reference image (img2img) */}
+        <div>
+          <p className="text-[10px] text-fg-dim uppercase tracking-wider mb-2">Reference Image</p>
+          {referenceImage ? (
+            <div className="flex flex-col gap-2">
+              <div className="relative rounded-lg overflow-hidden border border-stroke">
+                <img src={referenceImage.dataUrl} alt="reference" className="w-full h-24 object-cover" />
+                <button
+                  onClick={() => setReferenceImage(null)}
+                  disabled={isGenerating}
+                  className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded p-0.5 transition-colors disabled:opacity-40"
+                  title="Remove reference image"
+                >
+                  <XIcon />
+                </button>
+              </div>
+              <div>
+                <div className="flex justify-between text-[10px] text-fg-dim mb-1">
+                  <span>Influence</span>
+                  <span>{Math.round(strength * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1"
+                  step="0.05"
+                  value={strength}
+                  onChange={(e) => setStrength(parseFloat(e.target.value))}
+                  disabled={isGenerating}
+                  className="w-full accent-accent disabled:opacity-50"
+                />
+                <div className="flex justify-between text-[9px] text-fg-faint mt-0.5">
+                  <span>Subtle</span>
+                  <span>Ignore reference</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <label
+              className="flex flex-col items-center justify-center gap-1.5 w-full h-20 border border-dashed border-stroke rounded-lg cursor-pointer hover:border-accent/60 hover:bg-accent/5 transition-colors"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleReferenceDrop}
+            >
+              <UploadIcon />
+              <span className="text-[10px] text-fg-faint">Click or drop an image</span>
+              <input type="file" accept="image/*" className="hidden" onChange={handleReferenceInputChange} disabled={isGenerating} />
+            </label>
+          )}
         </div>
 
         {/* Style selector */}
@@ -235,6 +273,15 @@ function UploadIcon() {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="17 8 12 3 7 8" />
       <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   );
 }

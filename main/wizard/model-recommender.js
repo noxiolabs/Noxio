@@ -9,8 +9,8 @@
  * Recommendation table (recommended defaults per tier):
  *   Tier       Chat              Coding                  Image
  *   18GB+      gemma4:31b        qwen2.5-coder:14b       FLUX.1-dev-fp8
- *   10–18GB    gemma4:26b        qwen2.5-coder:14b       FLUX.1-schnell-fp8
- *   6–10GB     gemma4:e4b        qwen2.5-coder:7b        SDXL-lightning
+ *   10–18GB    gemma4:26b        qwen2.5-coder:14b       FLUX.2-klein-9b-fp8
+ *   6–10GB     gemma4:e4b        qwen2.5-coder:7b        FLUX.2-klein-4b-fp8
  *   3–6GB      gemma4:e2b        qwen2.5-coder:3b        SDXL 4-bit
  *   <3GB       Cloud recommended Cloud recommended        Cloud recommended
  *
@@ -37,14 +37,14 @@ const RECOMMENDATIONS = {
     image:  { model: 'FLUX.1-dev-fp8',     label: 'FLUX.1 Dev FP8',      company: 'BFL',       sizeGB: 17.0 },
   },
   '10-18': {
-    chat:   { model: 'gemma4:26b',         label: 'Gemma 4 26B',         company: 'Google',    sizeGB: 16.0 },
-    coding: { model: 'qwen2.5-coder:14b',  label: 'Qwen 2.5 Coder 14B', company: 'Alibaba',   sizeGB: 8.5  },
-    image:  { model: 'FLUX.1-schnell-fp8', label: 'FLUX.1 Schnell FP8',  company: 'BFL',       sizeGB: 9.0  },
+    chat:   { model: 'gemma4:26b',            label: 'Gemma 4 26B',            company: 'Google',  sizeGB: 16.0 },
+    coding: { model: 'qwen2.5-coder:14b',     label: 'Qwen 2.5 Coder 14B',    company: 'Alibaba', sizeGB: 8.5  },
+    image:  { model: 'FLUX.2-klein-9b-fp8',   label: 'FLUX.2 Klein 9B FP8',   company: 'BFL',     sizeGB: 9.0,  gated: true },
   },
   '6-10': {
-    chat:   { model: 'gemma4:e4b',         label: 'Gemma 4 E4B',         company: 'Google',    sizeGB: 3.0  },
-    coding: { model: 'qwen2.5-coder:7b',   label: 'Qwen 2.5 Coder 7B',  company: 'Alibaba',   sizeGB: 4.5  },
-    image:  { model: 'SDXL-lightning',     label: 'SDXL Lightning',       company: 'Stability', sizeGB: 6.5  },
+    chat:   { model: 'gemma4:e4b',            label: 'Gemma 4 E4B',            company: 'Google',  sizeGB: 3.0  },
+    coding: { model: 'qwen2.5-coder:7b',      label: 'Qwen 2.5 Coder 7B',     company: 'Alibaba', sizeGB: 4.5  },
+    image:  { model: 'FLUX.2-klein-4b-fp8',   label: 'FLUX.2 Klein 4B FP8',   company: 'BFL',     sizeGB: 4.0 },
   },
   '3-6': {
     chat:   { model: 'gemma4:e2b',         label: 'Gemma 4 E2B',         company: 'Google',    sizeGB: 1.5  },
@@ -297,15 +297,32 @@ const ALTERNATIVES_CATALOG = {
   image: [
     // ── 18GB+ tier ────────────────────────────────────────────────────────────
     {
+      model: 'FLUX.1-dev-fp8',
+      label: 'FLUX.1 Dev FP8',
+      company: 'BFL',
+      sizeGB: 17.0,
+      minTier: '18+',
+      notes: 'Highest quality · slower · guidance-distilled',
+    },
+    {
       model: 'FLUX.1-schnell-fp8',
       label: 'FLUX.1 Schnell FP8',
       company: 'BFL',
       sizeGB: 9.0,
       minTier: '18+',
-      notes: 'Faster · slightly lower quality',
+      notes: 'Fast · slightly lower quality than Dev',
     },
 
     // ── 10–18GB tier ──────────────────────────────────────────────────────────
+    {
+      model: 'FLUX.2-klein-9b-fp8',
+      label: 'FLUX.2 Klein 9B FP8',
+      company: 'BFL',
+      sizeGB: 9.0,
+      minTier: '10-18',
+      notes: 'Recommended · efficient transformer architecture',
+      gated: true,
+    },
     {
       model: 'SDXL-lightning',
       label: 'SDXL Lightning',
@@ -316,6 +333,14 @@ const ALTERNATIVES_CATALOG = {
     },
 
     // ── 6–10GB tier ───────────────────────────────────────────────────────────
+    {
+      model: 'FLUX.2-klein-4b-fp8',
+      label: 'FLUX.2 Klein 4B FP8',
+      company: 'BFL',
+      sizeGB: 4.0,
+      minTier: '6-10',
+      notes: 'Recommended · compact · efficient',
+    },
     {
       model: 'SDXL-4bit',
       label: 'SDXL 4-bit',

@@ -30,10 +30,98 @@ const logger = require('../utils/logger');
 const COMFYUI_ZIP_URL =
   'https://github.com/Comfy-Org/ComfyUI/releases/latest/download/ComfyUI_windows_portable_nvidia_cu126.7z';
 
-const FLUX_MODEL_URL =
-  'https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors';
+/**
+ * Download catalog for ComfyUI image models.
+ * Keys match the model IDs used in model-recommender.js and comfyui.js MODEL_FILENAMES.
+ *   filename   — local safetensors filename
+ *   subfolder  — ComfyUI models subfolder (default: 'checkpoints')
+ *   url        — HuggingFace download URL
+ *   minBytes   — minimum expected file size for idempotency check
+ *   sizeGB     — approximate size shown in progress messages
+ *   gated      — requires HuggingFace auth token
+ *   companions — additional files required alongside the main model (e.g. VAE, text encoder)
+ */
 
-const FLUX_MIN_SIZE_BYTES = 9_000_000_000;
+// Per-variant companion files for FLUX.2 Klein (VAE + text encoder).
+// 4B and 9B use different text encoders — mixing them causes a shape mismatch crash.
+const KLEIN_4B_COMPANIONS = [
+  {
+    filename: 'flux2-vae.safetensors',
+    subfolder: 'vae',
+    url:       'https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/resolve/main/split_files/vae/flux2-vae.safetensors',
+    minBytes:  100_000_000,
+    sizeGB:    0.2,
+  },
+  {
+    filename: 'qwen_3_4b_fp4_flux2.safetensors',
+    subfolder: 'text_encoders',
+    url:       'https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/resolve/main/split_files/text_encoders/qwen_3_4b_fp4_flux2.safetensors',
+    minBytes:  2_000_000_000,
+    sizeGB:    2.3,
+  },
+];
+
+// 9B uses Qwen3-8B text encoder (12288-dim) — the 4B encoder (7680-dim) causes a crash.
+const KLEIN_9B_COMPANIONS = [
+  {
+    filename: 'flux2-vae.safetensors',
+    subfolder: 'vae',
+    url:       'https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-9b/resolve/main/split_files/vae/flux2-vae.safetensors',
+    minBytes:  100_000_000,
+    sizeGB:    0.2,
+  },
+  {
+    filename: 'qwen_3_8b_fp8mixed.safetensors',
+    subfolder: 'text_encoders',
+    url:       'https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-9b/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors',
+    minBytes:  5_000_000_000,
+    sizeGB:    8,
+  },
+];
+
+const IMAGE_CHECKPOINT_CATALOG = {
+  'FLUX.1-schnell-fp8': {
+    filename: 'flux1-schnell-fp8.safetensors',
+    url:      'https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors',
+    minBytes: 9_000_000_000,
+    sizeGB:   9,
+  },
+  'FLUX.1-dev-fp8': {
+    filename: 'flux1-dev-fp8.safetensors',
+    url:      'https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/flux1-dev-fp8.safetensors',
+    minBytes: 17_000_000_000,
+    sizeGB:   17,
+  },
+  'FLUX.2-klein-9b-fp8': {
+    filename:   'flux-2-klein-9b-fp8.safetensors',
+    subfolder:  'diffusion_models',
+    url:        'https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors',
+    minBytes:   8_000_000_000,
+    sizeGB:     9,
+    gated:      true,
+    companions: KLEIN_9B_COMPANIONS,
+  },
+  'FLUX.2-klein-4b-fp8': {
+    filename:   'flux-2-klein-4b-fp8.safetensors',
+    subfolder:  'diffusion_models',
+    url:        'https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors',
+    minBytes:   3_500_000_000,
+    sizeGB:     4,
+    companions: KLEIN_4B_COMPANIONS,
+  },
+  'SDXL-lightning': {
+    filename: 'sdxl-lightning-4step.safetensors',
+    url:      'https://huggingface.co/ByteDance/SDXL-Lightning/resolve/main/sdxl_lightning_4step_unet.safetensors',
+    minBytes: 6_000_000_000,
+    sizeGB:   6.5,
+  },
+  'SDXL-4bit': {
+    filename: 'sdxl-4bit.safetensors',
+    url:      'https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors',
+    minBytes: 3_000_000_000,
+    sizeGB:   3.5,
+  },
+};
 
 // ─── Python resolution ───────────────────────────────────────────────────────
 
@@ -91,17 +179,18 @@ async function resolveSystemPython() {
  * @param {function(number): void} onProgress - Receives percent 0–100
  * @returns {Promise<void>}
  */
-function downloadFileWithProgress(url, destPath, onProgress) {
+function downloadFileWithProgress(url, destPath, onProgress, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(destPath);
 
     const get = (targetUrl) => {
-      const req = https.get(targetUrl, { timeout: 60_000 }, (response) => {
+      const options = { timeout: 60_000, headers: extraHeaders };
+      const req = https.get(targetUrl, options, (response) => {
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
           file.close();
           fs.unlink(destPath, () => {});
           // Re-open and retry with redirect target
-          downloadFileWithProgress(response.headers.location, destPath, onProgress)
+          downloadFileWithProgress(response.headers.location, destPath, onProgress, extraHeaders)
             .then(resolve)
             .catch(reject);
           return;
@@ -109,6 +198,7 @@ function downloadFileWithProgress(url, destPath, onProgress) {
 
         if (response.statusCode !== 200) {
           file.close();
+          fs.unlink(destPath, () => {});
           reject(new Error(`service-installer: HTTP ${response.statusCode} for ${targetUrl}`));
           return;
         }
@@ -352,52 +442,115 @@ async function createVenv({ service, installDir, pythonExe, packages, onProgress
 // ─── Model downloads ─────────────────────────────────────────────────────────
 
 /**
- * Downloads the FLUX.1-schnell fp8 SafeTensors model for ComfyUI.
+ * Downloads a ComfyUI image checkpoint by model ID.
  * Uses a .part file during download and renames on completion for atomicity.
- * Skips if the file already exists and is larger than the minimum expected size.
+ * Skips if the file already exists and exceeds the catalog minimum size.
  *
  * @param {string} installDir - Root install directory
+ * @param {string} modelId - Key from IMAGE_CHECKPOINT_CATALOG (e.g. 'FLUX.1-schnell-fp8')
  * @param {function(number): void} onProgress - Receives percent 0–100
- * @returns {Promise<void>}
- * @throws {Error} On download failure
+ * @param {string|null} [hfToken] - HuggingFace access token for gated models
+ * @returns {Promise<{filename: string, sizeGB: number}>} Resolved catalog entry metadata
+ * @throws {Error} If modelId is unknown or download fails
  */
-async function downloadFluxModel(installDir, onProgress) {
-  const destPath = path.join(
-    installDir,
-    'comfyui',
-    'ComfyUI_windows_portable',
-    'ComfyUI',
-    'models',
-    'checkpoints',
-    'flux1-schnell-fp8.safetensors'
+async function downloadImageCheckpoint(installDir, modelId, onProgress, hfToken = null) {
+  const entry = IMAGE_CHECKPOINT_CATALOG[modelId];
+  if (!entry) {
+    throw new Error(`service-installer: unknown image model "${modelId}" — not in catalog`);
+  }
+
+  const modelsBase = path.join(
+    installDir, 'comfyui', 'ComfyUI_windows_portable', 'ComfyUI', 'models'
   );
+  const subfolder = entry.subfolder ?? 'checkpoints';
+  const destPath = path.join(modelsBase, subfolder, entry.filename);
   const partPath = destPath + '.part';
 
-  // Idempotent — skip if already downloaded with expected minimum size
+  // Main model download occupies 0–90% of progress; companions fill 90–100%.
+  const hasCompanions = Array.isArray(entry.companions) && entry.companions.length > 0;
+  const mainCeiling = hasCompanions ? 90 : 100;
+
+  let mainAlreadyPresent = false;
   if (fs.existsSync(destPath)) {
     try {
       const { size } = fs.statSync(destPath);
-      if (size > FLUX_MIN_SIZE_BYTES) {
-        logger.info('service-installer: FLUX model already downloaded — skipping');
-        onProgress(100);
-        return;
+      if (size > entry.minBytes) {
+        logger.info(`service-installer: "${entry.filename}" already downloaded — skipping`);
+        mainAlreadyPresent = true;
       }
     } catch (_) { /* fall through to re-download */ }
   }
 
-  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  if (!mainAlreadyPresent) {
+    if (entry.gated && !hfToken) {
+      throw new Error(
+        `service-installer: "${modelId}" is a gated HuggingFace model — ` +
+        'go to Settings → Models, enter your HuggingFace access token, and click Save token'
+      );
+    }
 
-  logger.info(`service-installer: downloading FLUX model to "${destPath}"`);
-  onProgress(0);
+    fs.mkdirSync(path.dirname(destPath), { recursive: true });
+    try { fs.unlinkSync(partPath); } catch (_) { /* no stale .part file — fine */ }
+    logger.info(
+      `service-installer: downloading "${modelId}" (≈${entry.sizeGB} GB) to "${destPath}" ` +
+      `[token: ${hfToken ? 'present' : 'none'}]`
+    );
+    onProgress(0);
 
-  await downloadFileWithProgress(FLUX_MODEL_URL, partPath, (pct) => {
-    onProgress(pct);
-  });
+    const headers = hfToken ? { Authorization: `Bearer ${hfToken}` } : {};
+    await downloadFileWithProgress(entry.url, partPath, (pct) => {
+      onProgress(Math.floor(pct * mainCeiling / 100));
+    }, headers);
 
-  // Atomic rename: .part → final filename
-  fs.renameSync(partPath, destPath);
+    fs.renameSync(partPath, destPath);
+    logger.info(`service-installer: "${modelId}" download complete`);
+  }
+
+  // Download companion files (VAE, text encoder) required alongside the main model.
+  if (hasCompanions) {
+    for (let i = 0; i < entry.companions.length; i++) {
+      const companion = entry.companions[i];
+      const companionDest = path.join(modelsBase, companion.subfolder, companion.filename);
+      const companionPart = companionDest + '.part';
+
+      let skip = false;
+      if (fs.existsSync(companionDest)) {
+        try {
+          const { size } = fs.statSync(companionDest);
+          if (size > companion.minBytes) {
+            logger.info(`service-installer: companion "${companion.filename}" already present — skipping`);
+            skip = true;
+          }
+        } catch (_) { /* fall through */ }
+      }
+
+      if (!skip) {
+        fs.mkdirSync(path.dirname(companionDest), { recursive: true });
+        try { fs.unlinkSync(companionPart); } catch (_) { /* no stale .part file — fine */ }
+        logger.info(
+          `service-installer: downloading companion "${companion.filename}" (≈${companion.sizeGB} GB)`
+        );
+        const companionStart = mainCeiling + (i / entry.companions.length) * (100 - mainCeiling);
+        const companionEnd   = mainCeiling + ((i + 1) / entry.companions.length) * (100 - mainCeiling);
+        await downloadFileWithProgress(companion.url, companionPart, (pct) => {
+          onProgress(Math.floor(companionStart + (pct / 100) * (companionEnd - companionStart)));
+        }, {});
+        fs.renameSync(companionPart, companionDest);
+        logger.info(`service-installer: companion "${companion.filename}" download complete`);
+      }
+
+      // Mark companion range complete
+      onProgress(Math.floor(mainCeiling + ((i + 1) / entry.companions.length) * (100 - mainCeiling)));
+    }
+  }
+
   onProgress(100);
-  logger.info('service-installer: FLUX model download complete');
+  return { filename: entry.filename, sizeGB: entry.sizeGB };
+}
+
+/** @deprecated Use downloadImageCheckpoint('FLUX.1-schnell-fp8', ...) instead */
+async function downloadFluxModel(installDir, onProgress) {
+  return downloadImageCheckpoint(installDir, 'FLUX.1-schnell-fp8', onProgress);
 }
 
 /**
@@ -532,7 +685,9 @@ module.exports = {
   installComfyUI,
   upgradeTorchForBlackwell,
   createVenv,
+  downloadImageCheckpoint,
   downloadFluxModel,
   downloadWhisperModel,
   downloadKokoroModel,
+  IMAGE_CHECKPOINT_CATALOG,
 };

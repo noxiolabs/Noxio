@@ -36,9 +36,10 @@ const {
   installComfyUI,
   upgradeTorchForBlackwell,
   createVenv,
-  downloadFluxModel,
+  downloadImageCheckpoint,
   downloadWhisperModel,
   downloadKokoroModel,
+  IMAGE_CHECKPOINT_CATALOG,
 } = require('../wizard/service-installer');
 
 // ─── Per-step weight table ────────────────────────────────────────────────────
@@ -533,27 +534,39 @@ async function runInstallation({ capabilities = [], models = {}, installDir, ins
   if (hasImage) {
     const stepName = 'download-flux';
     const { start, end } = ranges[stepName];
-    const stepProgress = makeStepProgress(win, stepName, start, end, 'Downloading FLUX model...');
+
+    // Determine which checkpoint the wizard recommended; fall back to FLUX.1-schnell
+    const imageModelId = models.image || 'FLUX.1-schnell-fp8';
+    const catalogEntry = IMAGE_CHECKPOINT_CATALOG[imageModelId] ?? IMAGE_CHECKPOINT_CATALOG['FLUX.1-schnell-fp8'];
+    const resolvedModelId = IMAGE_CHECKPOINT_CATALOG[imageModelId] ? imageModelId : 'FLUX.1-schnell-fp8';
+
+    const stepProgress = makeStepProgress(win, stepName, start, end, `Downloading ${resolvedModelId}...`);
 
     try {
-      emitProgress(win, stepName, start, 'Downloading FLUX.1-schnell model (≈9 GB)...');
-      await downloadFluxModel(installDir, stepProgress);
-      emitProgress(win, stepName, end, 'FLUX model ready ✓');
-      const fluxFilePath = require('path').join(
+      const hfToken = store.get('settings.hfToken', null) || null;
+      logger.info(`installer: download-flux — model: ${resolvedModelId}, hfToken: ${hfToken ? 'present' : 'MISSING'}`);
+      emitProgress(win, stepName, start, `Downloading ${resolvedModelId} (≈${catalogEntry.sizeGB} GB)...`);
+      await downloadImageCheckpoint(installDir, resolvedModelId, stepProgress, hfToken);
+      emitProgress(win, stepName, end, `${resolvedModelId} ready ✓`);
+
+      const checkpointFilePath = path.join(
         installDir,
-        'comfyui', 'ComfyUI_windows_portable', 'ComfyUI', 'models', 'checkpoints',
-        'flux1-schnell-fp8.safetensors'
+        'comfyui', 'ComfyUI_windows_portable', 'ComfyUI', 'models',
+        catalogEntry.subfolder ?? 'checkpoints',
+        catalogEntry.filename
       );
       manifest.markModelInstalled(store, {
-        modelId: 'flux1-schnell-fp8',
+        modelId: resolvedModelId,
         backend: 'comfyui',
         capability: 'image',
-        sizeGB: 9,
-        filePath: fluxFilePath,
+        sizeGB: catalogEntry.sizeGB,
+        filePath: checkpointFilePath,
       });
+      // Persist the image model ID so comfyui.js uses the correct checkpoint at runtime
+      store.set('settings.models.image', resolvedModelId);
     } catch (err) {
       logger.error(`installer: download-flux failed — ${err.message}`);
-      emitError(win, stepName, `Failed to download FLUX model: ${err.message}`, true);
+      emitError(win, stepName, `Failed to download image model: ${err.message}`, true);
       return { success: false };
     }
   }
